@@ -1,4 +1,4 @@
-# DSH BigPlan
+﻿# DSH ProgressTarget
 
 <p align="center">
   <a href="README.md">English</a> · <strong>简体中文</strong>
@@ -6,13 +6,13 @@
 
 > 让 AI Agent 真正完成长期任务，而不只是写一份待办清单。
 
-DSH BigPlan 是面向 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 的持久化计划与执行控制插件。它为每个会话提供语义阶段、质量门、交付物门、截止时间、可审计重试、多资源执行计划和动态资源发现。
+DSH ProgressTarget 是面向 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 的持久化计划与执行控制插件。它为每个会话提供语义阶段、质量门、交付物门、截止时间、可审计重试、多资源执行计划和动态资源发现。
 
-## 为什么需要 BigPlan？
+## 为什么需要 ProgressTarget？
 
 普通 Agent 计划经常出现这些问题：没有可用交付物就宣布阶段完成；指标定义模糊；截止时间被悄悄延后；阶段转换后继续使用过期的 GPU 状态；明明可以自主推进，却频繁停下来等待用户确认。
 
-BigPlan 将普通计划升级为可执行契约：
+ProgressTarget 将普通计划升级为可执行契约：
 
 - **会话级持久化**：每个会话维护独立计划。
 - **语义化阶段**：按真实依赖拆分，而不是机械四等分。
@@ -43,7 +43,7 @@ BigPlan 将普通计划升级为可执行契约：
 本仓库是一个 DSH Profile Bundle。请将它加入承载 Web GUI 的实际 Profile；Profile 名称由部署决定：
 
 ```powershell
-dsh plugin --profile <你的-profile> add <DSH-BigPlan-本地路径>
+dsh plugin --profile <你的-profile> add <ProgressTarget-本地路径>
 ```
 
 安装后重启原有 DSH Web Host。不要另起一个替代 Vite 服务，因为 Web 启动状态由正在运行的 DSH Host 注入。
@@ -62,7 +62,7 @@ dsh plugin --profile <你的-profile> add <DSH-BigPlan-本地路径>
 
 ## 使用前配置自己的部署
 
-BigPlan **没有通用服务器清单**。服务器名称、资源查询方式、质量阈值、交付物规则、存储位置、截止时间、权限与资源限制，都必须由使用者根据自己的环境配置。
+ProgressTarget **没有通用服务器清单**。服务器名称、资源查询方式、质量阈值、交付物规则、存储位置、截止时间、权限与资源限制，都必须由使用者根据自己的环境配置。
 
 在 `cordis.patch.yml` 中修改：
 
@@ -83,7 +83,7 @@ config:
 
 `requiredServers: []` 表示不强制固定服务器清单，适用于 CPU-only、云端自动扩缩容、调度器资源池或动态发现环境。如果配置了清单，每份快照必须覆盖所有名称；同时仍允许记录额外发现的资源。
 
-生产使用前，请完整阅读[配置与部署审计清单](CONFIGURATION.md)。BigPlan 只校验 Agent 提交的状态和证据；它不会自动提供 SSH、调度器、凭据、GPU、计时器或后台作业能力。
+生产使用前，请完整阅读[配置与部署审计清单](CONFIGURATION.md)。ProgressTarget 只校验 Agent 提交的状态和证据；它不会自动提供 SSH、调度器、凭据、GPU、计时器或后台作业能力。
 
 ## 状态语义
 

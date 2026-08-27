@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 — 2026-08-26
+
+- Rebrand the project from BigPlan to ProgressTarget.
+- Rename the package identifier to `dsh-progress-target`.
+- Update documentation, prompts, and social copy to the new name.
+
 ## 1.1.0 — 2026-08-26
 
 - Replace deployment-specific hard-coded GPU server names with `requiredServers` configuration.

@@ -1,6 +1,6 @@
-# Configuration audit and deployment checklist
+﻿# Configuration audit and deployment checklist
 
-BigPlan intentionally does not assume that another deployment has the author's servers, paths, deadlines, metrics, or execution tools. Configure and review the following before use.
+ProgressTarget intentionally does not assume that another deployment has the author's servers, paths, deadlines, metrics, or execution tools. Configure and review the following before use.
 
 ## Plugin configuration
 
@@ -9,7 +9,7 @@ Edit `cordis.patch.yml` before adding the bundle:
 ```yaml
 - insert:
     - id: progress-target
-      name: dsh-bigplan
+      name: dsh-progress-target
       config:
         requiredServers:
           - gpu-a
@@ -39,11 +39,11 @@ Server names are arbitrary strings. The sample names in the guide are examples o
 8. **Deadlines and timezone** — all API timestamps must be valid ISO 8601 values.
 9. **Parallelism policy** — GPU/CPU limits, queue quotas, cost budgets, and whether all available nodes may be used.
 10. **Sharding contract** — partition key, overlap rules, deterministic merge, retry behavior, and output manifest.
-11. **Monitoring cadence** — BigPlan supplies initial 5/50/75/100 semantics, but operational alerts remain deployment-owned.
+11. **Monitoring cadence** — ProgressTarget supplies initial 5/50/75/100 semantics, but operational alerts remain deployment-owned.
 12. **Authorization policy** — who may rewrite/delete history and what audit trail is required.
 13. **Security** — credentials must remain in the deployment's secret system, never in plan evidence.
 14. **Profile name and restart procedure** — `web` is an example; use the actual DSH Profile and its normal Host lifecycle.
-15. **Agent capabilities** — BigPlan validates supplied state; it does not create SSH, scheduler, GPU, timer, or background-job capabilities.
+15. **Agent capabilities** — ProgressTarget validates supplied state; it does not create SSH, scheduler, GPU, timer, or background-job capabilities.
 
 ## Resource discovery behavior
 

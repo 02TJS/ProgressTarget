@@ -1,4 +1,4 @@
-# DSH BigPlan
+﻿# DSH ProgressTarget
 
 <p align="center">
   <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
@@ -6,13 +6,13 @@
 
 > Make AI agents finish long-running work—not merely write a checklist.
 
-DSH BigPlan is a persistent planning and execution-control plugin for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness). It adds semantic phases, quality gates, deliverable gates, deadlines, auditable retries, multi-resource execution plans, and dynamic GPU discovery to each conversation.
+DSH ProgressTarget is a persistent planning and execution-control plugin for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness). It adds semantic phases, quality gates, deliverable gates, deadlines, auditable retries, multi-resource execution plans, and dynamic GPU discovery to each conversation.
 
-## Why BigPlan?
+## Why ProgressTarget?
 
 Ordinary agent plans often fail in predictable ways: phases are declared complete without usable artifacts, metrics are vague, deadlines silently slip, GPU availability becomes stale, and the agent pauses for confirmation even when it could continue autonomously.
 
-BigPlan turns a plan into an enforceable execution contract:
+ProgressTarget turns a plan into an enforceable execution contract:
 
 - **Persistent per-session plans** — every conversation owns an independent plan.
 - **Semantic phases** — split by real dependencies, not mechanical quarters.
@@ -43,7 +43,7 @@ quality gate + deliverable gate + deadline gate
 This repository is a DSH Profile Bundle. Add it to the Profile that owns your Web GUI (the Profile name is deployment-specific):
 
 ```powershell
-dsh plugin --profile <your-profile> add <path-to-DSH-BigPlan>
+dsh plugin --profile <your-profile> add <path-to-ProgressTarget>
 ```
 
 Restart the existing DSH Web Host after installation. Do not start a replacement Vite server: the running DSH Host injects the Web boot state.
@@ -62,7 +62,7 @@ The full production prompt is available in [`PROMPT.zh-CN.md`](PROMPT.zh-CN.md).
 
 ## Configure your deployment first
 
-BigPlan ships with **no universal server inventory**. Server names, discovery commands, quality thresholds, artifact rules, storage, deadlines, permissions, and resource limits are deployment-specific.
+ProgressTarget ships with **no universal server inventory**. Server names, discovery commands, quality thresholds, artifact rules, storage, deadlines, permissions, and resource limits are deployment-specific.
 
 Configure the bundle in `cordis.patch.yml`:
 
@@ -77,7 +77,7 @@ config:
 
 An empty `requiredServers: []` disables fixed-inventory enforcement and supports CPU-only, cloud-autoscaled, scheduler-backed, or dynamically discovered environments. If configured, every resource snapshot must cover all listed servers; additional discovered servers remain allowed.
 
-Read the complete [configuration and deployment audit](CONFIGURATION.md) before production use. BigPlan validates evidence supplied by the agent; it does not create SSH connectivity, scheduler integration, credentials, GPUs, timers, or background-job capabilities.
+Read the complete [configuration and deployment audit](CONFIGURATION.md) before production use. ProgressTarget validates evidence supplied by the agent; it does not create SSH connectivity, scheduler integration, credentials, GPUs, timers, or background-job capabilities.
 
 ## State semantics
 

@@ -1,6 +1,6 @@
 {
-  "name": "dsh-bigplan",
-  "version": "1.1.0",
+  "name": "dsh-progress-target",
+  "version": "1.2.0",
   "description": "Persistent, quality-gated, resource-aware execution plans for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
