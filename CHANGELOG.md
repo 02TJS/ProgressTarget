@@ -2,7 +2,7 @@
 
 ## 1.2.0 — 2026-08-26
 
-- Rebrand the project from BigPlan to ProgressTarget.
+- Rebrand the project to ProgressTarget.
 - Rename the package identifier to `dsh-progress-target`.
 - Update documentation, prompts, and social copy to the new name.
 
