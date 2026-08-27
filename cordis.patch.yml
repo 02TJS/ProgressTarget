@@ -1,0 +1,11 @@
+# Persistent progress target tab for the user-owned Web profile.
+- insert:
+    - id: progress-target
+      name: dsh-bigplan
+      config:
+        # Replace with every resource server your deployment requires the
+        # agent to inspect before a phase starts, transitions, or replans.
+        # Leave empty when there is no fixed server inventory.
+        requiredServers: []
+        resourceDiscoveryMaxAgeMinutes: 10
+        dataDir: .progress-target
