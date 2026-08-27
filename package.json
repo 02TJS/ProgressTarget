@@ -1,0 +1,48 @@
+{
+  "name": "dsh-progress-target",
+  "version": "1.2.0",
+  "description": "Persistent, quality-gated, resource-aware execution plans for DeepSeek Harness",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "ai-agent",
+    "experiment-tracking",
+    "gpu-scheduling",
+    "cordis"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "GUIDE.zh-CN.md",
+    "CONFIGURATION.md",
+    "PROMPT.zh-CN.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}
