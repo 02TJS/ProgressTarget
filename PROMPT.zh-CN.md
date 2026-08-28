@@ -13,7 +13,7 @@
 
 任一检查点仍未结束时，立即重新查询四台服务器的可用状态，检查空闲资源、慢分支、可新增的并行工作和各分支交付物，然后重估该分支剩余时间；此后只安排新剩余时间的50%和100%检查点。若100%时仍未结束，则再次刷新资源状态、调整资源分配并递归重估，不得恢复5分钟或75%检查点，也不得进行额外的高频轮询。
 
-只有全部结构化质量目标达标、必需交付物全部 ready 且具有验收证据，并且阶段未超过 deadlineAt 时，才能标记 completed。质量目标未达标或交付物缺失时，必须记录 attempt.summary、attempt.findings 和 attempt.adjustment 后继续执行。
+只有全部结构化质量目标达标、必需交付物全部 ready 且具有验收证据，并且阶段未超过 deadlineAt 时，才能标记 completed。质量目标未达标或交付物缺失时，必须记录 attempt.summary、attempt.findings 和 attempt.adjustment 后继续执行。不得为 continuation 或重试设置 maxRounds、maxRetries、stopAfterAttempts 等轮数上限；未超时且仍有可执行调整方案时必须持续尝试，轮数、进展缓慢或自动续跑预算不能作为停止理由。
 
 默认保护计划历史，尤其是 completed 和 overdue 终态；未经用户明确授权不得删除、回退或改写。用户明确授权后，可以修改或删除任意状态的阶段，但必须保留授权理由和变更审计，不得自行推定授权。
 

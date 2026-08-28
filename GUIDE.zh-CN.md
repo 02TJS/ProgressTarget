@@ -128,6 +128,10 @@ contract-freeze → data-prep → train-baseline → tune → ablation → full-
 
 插件自动生成初始检查点：5分钟、预计总时间50%、75%；预计总时间100%作为结果收获点，不属于普通巡检。
 
+### 2.5 continuation 不设轮数上限
+
+Progress Target 不使用固定 continuation 或重试轮数作为停止条件。阶段尚未超过 `deadlineAt`、质量目标未达标且 `attempt.adjustment` 仍可执行时，Agent 必须继续调研、调整和重跑。不得使用 `maxRounds`、`maxRetries`、`stopAfterAttempts`，也不得因尝试次数多、改进缓慢或自动续跑预算用完而停止。只有阶段合法完成/逾期推进，或缺少用户专属输入、权限、安全确认，或出现有具体证据且无法替代的外部阻塞时，才允许停止。
+
 ## 3. 未达标或缺交付物时的强制循环
 
 硬目标未达标或必需交付物缺失时，阶段不能完成。Agent 必须：

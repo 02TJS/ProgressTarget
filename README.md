@@ -25,6 +25,7 @@ ProgressTarget turns a plan into an enforceable execution contract:
 - **Dynamic resource discovery** — refresh all configured GPU servers at phase start, transition, and replan.
 - **All-server sharding** — shardable inference, evaluation, and data work must use every available server.
 - **Auditable retries** — record result summaries, findings, and explicit adjustments.
+- **No continuation-round ceiling** — while still before the deadline and an actionable adjustment exists, the agent must keep researching and retrying; attempt count or continuation budget is not a valid stop reason.
 - **Recursive re-estimation** — unfinished work gets a new 50%/100% schedule instead of busy polling.
 - **Visible progress UI** — inspect phases, metrics, artifacts, retries, deadlines, and resource snapshots in DSH Web.
 
