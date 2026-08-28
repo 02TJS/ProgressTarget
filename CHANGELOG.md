@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.0 — 2026-08-26
+
+- Preserve plans without `schemaVersion` as fully compatible v1 plans.
+- Require all newly initialized plans to use the v2 quality-contribution contract.
+- Add structured final objectives and final deliverables.
+- Require phase metric research, traceable sources, candidate comparison, and selection rationale.
+- Require phase-to-final-objective mechanisms, evidence levels, uncertainty, risks, and validation plans.
+- Add metric kinds, measurement methods, limitations, and threshold provenance.
+- Allow unknown impact magnitude to remain null rather than inventing precision.
+- Reject v2 phases that rely only on process metrics.
+- Show plan contract version and objective contribution in the Web UI.
+
 ## 1.2.0 — 2026-08-26
 
 - Rebrand the project to ProgressTarget.

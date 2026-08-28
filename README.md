@@ -1,4 +1,4 @@
-﻿# DSH ProgressTarget
+# DSH ProgressTarget
 
 <p align="center">
   <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
@@ -106,8 +106,13 @@ Do not commit runtime plan files: `.gitignore` excludes `.progress-target/`.
 - Never place credentials, private SSH keys, tokens, or confidential dataset paths in evidence fields.
 - The plugin records evidence supplied by the agent but does not manage cluster credentials.
 
+## Contract compatibility
+
+Existing plans without `schemaVersion` continue under the v1 rules and are never silently rewritten. New plans use v2 and must define a final objective plus researched phase-quality proxies, traceable sources, measurement methods, threshold bases, limitations, uncertainty, and validation plans. Unknown impact magnitude may remain `null`; invented precision is rejected. See the [v2 quality-contribution contract](V2-CONTRACT.zh-CN.md).
+
 ## Documentation
 
+- [v2 quality-contribution contract (Chinese)](V2-CONTRACT.zh-CN.md)
 - [Configuration and deployment audit](CONFIGURATION.md)
 - [Complete Chinese guide](GUIDE.zh-CN.md)
 - [Production prompt template](PROMPT.zh-CN.md)

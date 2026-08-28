@@ -1,4 +1,4 @@
-﻿# DSH ProgressTarget
+# DSH ProgressTarget
 
 <p align="center">
   <a href="README.md">English</a> · <strong>简体中文</strong>
@@ -113,8 +113,13 @@ config:
 - 集群凭据应由部署自身的秘密管理系统维护。
 - 使用前明确计划文件的保留、备份以及授权修改策略。
 
+## 契约版本兼容
+
+既有且没有 `schemaVersion` 的计划继续按 v1 兼容执行，不会被自动改写。新会话首次建立计划时强制使用 v2：先定义最终目标，每阶段充分调研候选质量指标并记录来源、测量方法、阈值依据、局限性、影响机制、不确定性和验证方案。无法可靠预测贡献幅度时允许留空，但不能编造数值。详见 [v2质量贡献契约](V2-CONTRACT.zh-CN.md)。
+
 ## 文档
 
+- [v2质量贡献契约](V2-CONTRACT.zh-CN.md)
 - [配置与部署审计清单](CONFIGURATION.md)
 - [完整中文使用指南](GUIDE.zh-CN.md)
 - [生产提示词模板](PROMPT.zh-CN.md)

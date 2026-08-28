@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+﻿import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
@@ -14,6 +14,9 @@ const EMPTY_PLAN = {
   createdAt: '',
   timeline: []
 }
+
+const EVIDENCE_LEVELS = new Set(['hypothesis', 'literature-supported', 'pilot-supported', 'validated'])
+const THRESHOLD_BASIS_TYPES = new Set(['requirement', 'literature', 'historical-baseline', 'pilot-baseline', 'expert-judgment', 'adaptive'])
 
 function nowIso() {
   return new Date().toISOString()
@@ -115,7 +118,35 @@ function optionalIso(value, name) {
   return new Date(ms).toISOString()
 }
 
-function normalizeMetric(metric) {
+function normalizeFinalObjective(value) {
+  if (!value || typeof value !== 'object') throw new Error('v2 新计划必须设置 finalObjective')
+  const metrics = Array.isArray(value.metrics) ? value.metrics.map((metric, index) => ({
+    key: requiredText(metric && metric.key, 'finalObjective.metrics[' + index + '].key'),
+    operator: requiredText(metric && metric.operator, 'finalObjective.metrics[' + index + '].operator'),
+    targetValue: Number(metric && metric.targetValue),
+    unit: metric && metric.unit !== undefined ? String(metric.unit) : '',
+  })) : []
+  if (!metrics.length) throw new Error('finalObjective 至少需要一个结构化最终指标')
+  for (const metric of metrics) {
+    if (!OPERATORS.has(metric.operator) || !Number.isFinite(metric.targetValue)) throw new Error('finalObjective metric 的 operator/targetValue 无效')
+  }
+  if (new Set(metrics.map(metric => metric.key)).size !== metrics.length) throw new Error('finalObjective.metrics.key 必须唯一')
+  const deliverables = Array.isArray(value.deliverables) ? value.deliverables.map((item, index) => ({
+    name: requiredText(item && item.name, 'finalObjective.deliverables[' + index + '].name'),
+    acceptance: requiredText(item && item.acceptance, 'finalObjective.deliverables[' + index + '].acceptance'),
+  })) : []
+  if (!deliverables.length) throw new Error('finalObjective 至少需要一个最终交付物')
+  return { description: requiredText(value.description, 'finalObjective.description'), metrics, deliverables }
+}
+
+function normalizeThresholdBasis(value, metricKey) {
+  if (!value || typeof value !== 'object') throw new Error(metricKey + ' 必须设置 thresholdBasis')
+  const type = requiredText(value.type, metricKey + '.thresholdBasis.type')
+  if (!THRESHOLD_BASIS_TYPES.has(type)) throw new Error(metricKey + '.thresholdBasis.type 无效')
+  return { type, evidence: requiredText(value.evidence, metricKey + '.thresholdBasis.evidence'), reason: requiredText(value.reason, metricKey + '.thresholdBasis.reason') }
+}
+
+function normalizeMetric(metric, options = {}) {
   const key = requiredText(metric && metric.key, 'metrics.key')
   const operator = requiredText(metric && metric.operator, 'metrics.operator')
   if (!OPERATORS.has(operator)) throw new Error('metrics.operator 必须是 >=、>、<=、< 或 ==')
@@ -123,12 +154,62 @@ function normalizeMetric(metric) {
   const targetValue = Number(metric && metric.targetValue)
   if (!Number.isFinite(value)) throw new Error('metrics.value 必须是数值')
   if (!Number.isFinite(targetValue)) throw new Error('metrics.targetValue 必须是数值')
-  return {
+  const result = {
     key,
     value,
     operator,
     targetValue,
     unit: metric.unit === undefined ? '' : String(metric.unit),
+  }
+  if (options.v2) {
+    result.kind = requiredText(metric.kind, key + '.kind')
+    if (!['quality', 'process', 'final'].includes(result.kind)) throw new Error(key + '.kind 必须是 quality、process 或 final')
+    result.measurement = requiredText(metric.measurement, key + '.measurement')
+    result.limitations = requiredText(metric.limitations, key + '.limitations')
+    result.thresholdBasis = normalizeThresholdBasis(metric.thresholdBasis, key)
+  }
+  return result
+}
+
+function normalizeMetricResearch(value) {
+  if (!value || typeof value !== 'object') throw new Error('v2 阶段必须包含 metricResearch')
+  const questions = Array.isArray(value.questions) ? value.questions.map((item, index) => requiredText(item, 'metricResearch.questions[' + index + ']')) : []
+  const sources = Array.isArray(value.sources) ? value.sources.map((item, index) => ({
+    title: requiredText(item && item.title, 'metricResearch.sources[' + index + '].title'),
+    location: requiredText(item && item.location, 'metricResearch.sources[' + index + '].location'),
+    finding: requiredText(item && item.finding, 'metricResearch.sources[' + index + '].finding'),
+  })) : []
+  const candidates = Array.isArray(value.candidateMetrics) ? value.candidateMetrics.map((item, index) => ({
+    key: requiredText(item && item.key, 'metricResearch.candidateMetrics[' + index + '].key'),
+    rationale: requiredText(item && item.rationale, 'metricResearch.candidateMetrics[' + index + '].rationale'),
+    measurement: requiredText(item && item.measurement, 'metricResearch.candidateMetrics[' + index + '].measurement'),
+    limitations: requiredText(item && item.limitations, 'metricResearch.candidateMetrics[' + index + '].limitations'),
+  })) : []
+  const selectedMetrics = Array.isArray(value.selectedMetrics) ? value.selectedMetrics.map((item, index) => requiredText(item, 'metricResearch.selectedMetrics[' + index + ']')) : []
+  if (!questions.length || !sources.length || !candidates.length || !selectedMetrics.length) throw new Error('metricResearch 必须包含问题、可追溯来源、候选指标和已选指标')
+  const candidateKeys = new Set(candidates.map(item => item.key))
+  const unknown = selectedMetrics.filter(key => !candidateKeys.has(key))
+  if (unknown.length) throw new Error('selectedMetrics 必须来自 candidateMetrics；未知：' + unknown.join(', '))
+  return { questions, sources, candidateMetrics: candidates, selectedMetrics, selectionReason: requiredText(value.selectionReason, 'metricResearch.selectionReason') }
+}
+
+function normalizeObjectiveContribution(value, finalObjective) {
+  if (!value || typeof value !== 'object') throw new Error('v2 阶段必须包含 objectiveContribution')
+  const finalObjectiveKeys = Array.isArray(value.finalObjectiveKeys) ? value.finalObjectiveKeys.map((item, index) => requiredText(item, 'objectiveContribution.finalObjectiveKeys[' + index + ']')) : []
+  if (!finalObjectiveKeys.length) throw new Error('objectiveContribution 必须关联至少一个最终指标')
+  const allowed = new Set(finalObjective.metrics.map(metric => metric.key))
+  const unknown = finalObjectiveKeys.filter(key => !allowed.has(key))
+  if (unknown.length) throw new Error('阶段关联了不存在的最终指标：' + unknown.join(', '))
+  const evidenceLevel = requiredText(value.evidenceLevel, 'objectiveContribution.evidenceLevel')
+  if (!EVIDENCE_LEVELS.has(evidenceLevel)) throw new Error('objectiveContribution.evidenceLevel 无效')
+  return {
+    finalObjectiveKeys,
+    mechanism: requiredText(value.mechanism, 'objectiveContribution.mechanism'),
+    evidenceLevel,
+    impactEstimate: value.impactEstimate === undefined || value.impactEstimate === null ? null : String(value.impactEstimate),
+    uncertainty: requiredText(value.uncertainty, 'objectiveContribution.uncertainty'),
+    validationPlan: requiredText(value.validationPlan, 'objectiveContribution.validationPlan'),
+    riskIfMissed: requiredText(value.riskIfMissed, 'objectiveContribution.riskIfMissed'),
   }
 }
 
@@ -296,11 +377,15 @@ function preparePhaseUpdate(item, src, at, settings, options = {}) {
 
   if (src.metrics !== undefined) {
     if (!Array.isArray(src.metrics)) throw new Error('metrics 必须是数组')
-    next.metrics = src.metrics.map(normalizeMetric)
+    next.metrics = src.metrics.map(metric => normalizeMetric(metric, { v2: options.schemaVersion === 2 }))
   }
   if (src.deliverables !== undefined) {
     if (!Array.isArray(src.deliverables)) throw new Error('deliverables 必须是数组')
     next.deliverables = src.deliverables.map(normalizeDeliverable)
+  }
+  if (options.schemaVersion === 2) {
+    if (src.metricResearch !== undefined) next.metricResearch = normalizeMetricResearch(src.metricResearch)
+    if (src.objectiveContribution !== undefined) next.objectiveContribution = normalizeObjectiveContribution(src.objectiveContribution, options.finalObjective)
   }
   let suppliedExecutionPlan = null
   if (src.executionPlan !== undefined) {
@@ -320,6 +405,14 @@ function preparePhaseUpdate(item, src, at, settings, options = {}) {
 
   if (TERMINAL.has(item.status) && requestedStatus !== item.status && !options.allowTerminalRewrite) {
     throw new Error('已结束阶段不可回退或改写，除非用户明确授权')
+  }
+
+  if (options.schemaVersion === 2 && requestedStatus !== 'pending') {
+    if (!next.metricResearch || !next.objectiveContribution) throw new Error('v2 阶段启动前必须完成指标调研和最终目标贡献契约')
+    if (!next.metrics.some(metric => metric.kind === 'quality' || metric.kind === 'final')) throw new Error('v2 阶段至少需要一个影响最终目标的 quality/final 指标；过程指标不能单独门控')
+    const selected = new Set(next.metricResearch.selectedMetrics)
+    const unresearched = next.metrics.filter(metric => (metric.kind === 'quality' || metric.kind === 'final') && !selected.has(metric.key))
+    if (unresearched.length) throw new Error('质量指标必须来自 metricResearch.selectedMetrics：' + unresearched.map(metric => metric.key).join(', '))
   }
 
   if (requestedStatus === 'in-progress') {
@@ -386,15 +479,19 @@ function preparePhaseUpdate(item, src, at, settings, options = {}) {
   return next
 }
 
-function validateInitPhase(src, index, at, settings) {
+function validateInitPhase(src, index, at, settings, options = {}) {
   const id = requiredText(src && src.id, 'timeline[' + index + '].id')
   const phase = makePhase(id, at)
-  const next = preparePhaseUpdate(phase, src, at, settings, { previousPhaseCompletedAt: '' })
+  const next = preparePhaseUpdate(phase, src, at, settings, { previousPhaseCompletedAt: '', schemaVersion: options.schemaVersion, finalObjective: options.finalObjective })
   if (!next.metrics.length) throw new Error(id + ' 必须在规划时设置至少一个硬目标 metric')
   if (!next.deliverables.length) throw new Error(id + ' 必须在规划时设置至少一个必需交付物 deliverable')
   if (!next.executionPlan) throw new Error(id + ' 必须在规划时设置 executionPlan')
   if (!next.deadlineAt) throw new Error(id + ' 必须在规划时设置 deadlineAt')
   if (!next.actionTitle || !next.what || !next.purpose) throw new Error(id + ' 必须填写 actionTitle、what、purpose')
+  if (options.schemaVersion === 2) {
+    if (!next.metricResearch || !next.objectiveContribution) throw new Error(id + ' 必须在新计划中设置 metricResearch 和 objectiveContribution')
+    if (!next.metrics.some(metric => metric.kind === 'quality' || metric.kind === 'final')) throw new Error(id + ' 至少需要一个经调研选择的 quality/final 指标')
+  }
   return next
 }
 
@@ -435,19 +532,49 @@ export function apply(ctx, config = {}) {
           if (!plan) plan = clone(EMPTY_PLAN)
           if (!plan.createdAt) plan.createdAt = at
 
-          if (body._initPlan) {
+          if (body.operation === 'migrate-plan') {
+            if (body.userAuthorizedMigration !== true) throw new Error('迁移v2必须由用户明确授权 userAuthorizedMigration=true')
+            if (!Array.isArray(plan.timeline) || !plan.timeline.length) throw new Error('没有可迁移的既有计划')
+            if ((plan.schemaVersion || 1) !== 1) throw new Error('只有v1计划可以迁移到v2')
+            const finalObjective = normalizeFinalObjective(body.finalObjective)
+            if (!Array.isArray(body.timeline) || body.timeline.length !== plan.timeline.length) throw new Error('迁移必须为全部既有阶段提供完整v2契约，且不得增删阶段')
+            const byId = new Map(body.timeline.map(item => [requiredText(item && item.id, 'timeline.id'), item]))
+            const migrated = plan.timeline.map((oldItem, index) => {
+              const supplement = byId.get(oldItem.id)
+              if (!supplement) throw new Error('迁移缺少阶段 ' + oldItem.id)
+              const merged = { ...clone(oldItem), ...clone(supplement), id: oldItem.id, status: oldItem.status, completedAt: oldItem.completedAt }
+              return validateInitPhase(merged, index, at, settings, { schemaVersion: 2, finalObjective })
+            })
+            plan = {
+              ...plan,
+              schemaVersion: 2,
+              finalObjective,
+              timeline: migrated,
+              migrations: [...(Array.isArray(plan.migrations) ? plan.migrations : []), {
+                at,
+                from: 1,
+                to: 2,
+                reason: requiredText(body.migrationReason, 'migrationReason'),
+              }],
+            }
+          } else if (body._initPlan || body.operation === 'init-plan') {
             if (!Array.isArray(body.timeline) || !body.timeline.length) throw new Error('初始化计划必须包含非空 timeline')
+            const isExistingPlan = Array.isArray(plan.timeline) && plan.timeline.length > 0
+            const schemaVersion = isExistingPlan ? (plan.schemaVersion || 1) : 2
+            const finalObjective = schemaVersion === 2 ? normalizeFinalObjective(body.finalObjective) : plan.finalObjective
             const existingTerminal = new Map((plan.timeline || []).filter(item => TERMINAL.has(item.status)).map(item => [item.id, item]))
             const proposed = body.timeline.map((src, index) => {
               const id = requiredText(src && src.id, 'timeline[' + index + '].id')
               if (existingTerminal.has(id)) return clone(existingTerminal.get(id))
-              return validateInitPhase(src, index, at, settings)
+              return validateInitPhase(src, index, at, settings, { schemaVersion, finalObjective })
             })
             const proposedIds = new Set(proposed.map(item => item.id))
             for (const [id, oldItem] of existingTerminal) {
               if (!proposedIds.has(id)) proposed.push(clone(oldItem))
             }
             plan.introduction = requiredText(body.introduction, 'introduction')
+            plan.schemaVersion = schemaVersion
+            if (schemaVersion === 2) plan.finalObjective = finalObjective
             plan.timeline = proposed
           } else {
             const phaseId = requiredText(body.phase_id, 'phase_id')
@@ -461,7 +588,7 @@ export function apply(ctx, config = {}) {
             const previousPhase = index > 0 ? plan.timeline[index - 1] : null
             const next = body.userAuthorizedAudit === true
               ? applyAuditSupplement(item, body.auditSupplement, at, settings)
-              : preparePhaseUpdate(item, body, at, settings, { previousPhaseCompletedAt: previousPhase && previousPhase.completedAt })
+              : preparePhaseUpdate(item, body, at, settings, { previousPhaseCompletedAt: previousPhase && previousPhase.completedAt, schemaVersion: plan.schemaVersion || 1, finalObjective: plan.finalObjective })
             if (index >= 0) plan.timeline[index] = next
             else plan.timeline.push(next)
           }
@@ -481,11 +608,17 @@ export function apply(ctx, config = {}) {
 
   ctx.tools.register({
     name: 'update-progress-target',
-    description: '更新当前会话某个进程目标阶段。\n\n【根本目标】\n以完整完成计划为根本。每阶段规划至少一个必需交付物 deliverable；没有可供下一阶段消费的交付物，阶段即使超时也不能结束，且不得启动后续阶段。\n\n【时间规则】\n首次创建自动记录 createdAt；首次进入 in-progress 自动记录 startedAt。规划或启动每个阶段时必须设置 ISO 8601 deadlineAt。逾期但交付物缺失时保持 in-progress，填写 attempt 并重估新的 deadlineAt 继续执行。\n\n【双门控】\n质量门 metrics 决定是否达标；交付物门 deliverables 决定能否离开阶段。全部质量目标达标、交付物齐备且未超时才允许 completed。超过 deadlineAt 后，只有必需交付物全部 ready 且有 evidence 时才允许 overdue（质量可不达标）；交付物缺失则不能 overdue。\n硬目标未达标或交付物缺失时必须填写 attempt.summary、attempt.findings、attempt.adjustment，总结本轮结果、调研结论和下一轮调整后继续尝试。\n\n【资源发现与并行加速】\n每次阶段从 pending 进入 in-progress，以及进行中阶段重规划 executionPlan 时，都必须重新查询插件 requiredServers 配置中的全部资源服务器，并在 executionPlan.resourceDiscovery 中记录每台服务器状态、可用GPU数、查询时间和证据。查询快照不得超过配置的 resourceDiscoveryMaxAgeMinutes；阶段切换时 queriedAt 必须晚于上一阶段 completedAt，且不得复用本阶段旧快照。插件会保留 resourceDiscoveryHistory。不得锁定第一台GPU后停止查询。推理、评估、数据处理等可分片任务应设置 shardable=true；若多台服务器有可用GPU，resources 必须覆盖所有可用服务器并写明各自 shard。不可分片时必须填写 shardReason。\n每阶段必须填写 executionPlan。预计超过30分钟时，应主动拆出可独立推进的GPU、CPU、后台作业、子进程或调研分支并尽可能并行利用可用资源；parallelizable=true 时至少安排2个资源分支。确实只能串行时填写 serialReason。初始巡检仅为5分钟、预计总时间50%、75%；100%是结果收获点，不是普通巡检。每次巡检检查资源空闲、慢分支、可新增并行工作和各分支交付物。\n\n【巡检未结束】\n在任何计划巡检点，若任务进程/后台作业仍在运行，或阶段状态不是 completed/overdue，或质量目标/交付物门未通过，即判定“未结束”。应立即根据当前进度、速度和剩余工作量重新估计剩余时间，并重新分析并行资源；此后只安排该剩余时间的50%与100%两个检查点。100%时仍未结束，则再次重估、重新分配资源并重复50%/100%，直到完成、可逾期交付或出现明确阻塞。禁止恢复5分钟/75%巡检或额外轮询。\n\n【自动推进】\n阶段超过 deadlineAt、质量门未通过但必需交付物全部 ready 且有 evidence 时，应立即标记当前阶段 overdue，并使用合法交付物启动下一阶段；不得停下来等待用户审批。只有缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞时才询问用户。\n\n【阶段拆分】\n按任务实际依赖拆分语义阶段，不要机械四等分；phase_id 使用英文短横线。\n\n【留存】\ncompleted/overdue 阶段不得清除、回退或改写，除非用户明确授权。',
+    description: '更新当前会话某个进程目标阶段。\n\n【契约版本】\n既有无 schemaVersion 的计划按 v1 兼容执行；新建计划必须使用 v2，先定义 finalObjective。每阶段必须先充分调研候选质量指标，记录来源、测量方法、阈值依据、局限性、影响机制、不确定性与验证方案。无法可靠估计贡献幅度时使用 null，禁止编造。只有过程指标不能完成阶段。\n\n【根本目标】\n以完整完成计划为根本。每阶段规划至少一个必需交付物 deliverable；没有可供下一阶段消费的交付物，阶段即使超时也不能结束，且不得启动后续阶段。\n\n【时间规则】\n首次创建自动记录 createdAt；首次进入 in-progress 自动记录 startedAt。规划或启动每个阶段时必须设置 ISO 8601 deadlineAt。逾期但交付物缺失时保持 in-progress，填写 attempt 并重估新的 deadlineAt 继续执行。\n\n【双门控】\n质量门 metrics 决定是否达标；交付物门 deliverables 决定能否离开阶段。全部质量目标达标、交付物齐备且未超时才允许 completed。超过 deadlineAt 后，只有必需交付物全部 ready 且有 evidence 时才允许 overdue（质量可不达标）；交付物缺失则不能 overdue。\n硬目标未达标或交付物缺失时必须填写 attempt.summary、attempt.findings、attempt.adjustment，总结本轮结果、调研结论和下一轮调整后继续尝试。\n\n【资源发现与并行加速】\n每次阶段从 pending 进入 in-progress，以及进行中阶段重规划 executionPlan 时，都必须重新查询插件 requiredServers 配置中的全部资源服务器，并在 executionPlan.resourceDiscovery 中记录每台服务器状态、可用GPU数、查询时间和证据。查询快照不得超过配置的 resourceDiscoveryMaxAgeMinutes；阶段切换时 queriedAt 必须晚于上一阶段 completedAt，且不得复用本阶段旧快照。插件会保留 resourceDiscoveryHistory。不得锁定第一台GPU后停止查询。推理、评估、数据处理等可分片任务应设置 shardable=true；若多台服务器有可用GPU，resources 必须覆盖所有可用服务器并写明各自 shard。不可分片时必须填写 shardReason。\n每阶段必须填写 executionPlan。预计超过30分钟时，应主动拆出可独立推进的GPU、CPU、后台作业、子进程或调研分支并尽可能并行利用可用资源；parallelizable=true 时至少安排2个资源分支。确实只能串行时填写 serialReason。初始巡检仅为5分钟、预计总时间50%、75%；100%是结果收获点，不是普通巡检。每次巡检检查资源空闲、慢分支、可新增并行工作和各分支交付物。\n\n【巡检未结束】\n在任何计划巡检点，若任务进程/后台作业仍在运行，或阶段状态不是 completed/overdue，或质量目标/交付物门未通过，即判定“未结束”。应立即根据当前进度、速度和剩余工作量重新估计剩余时间，并重新分析并行资源；此后只安排该剩余时间的50%与100%两个检查点。100%时仍未结束，则再次重估、重新分配资源并重复50%/100%，直到完成、可逾期交付或出现明确阻塞。禁止恢复5分钟/75%巡检或额外轮询。\n\n【自动推进】\n阶段超过 deadlineAt、质量门未通过但必需交付物全部 ready 且有 evidence 时，应立即标记当前阶段 overdue，并使用合法交付物启动下一阶段；不得停下来等待用户审批。只有缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞时才询问用户。\n\n【阶段拆分】\n按任务实际依赖拆分语义阶段，不要机械四等分；phase_id 使用英文短横线。\n\n【留存】\ncompleted/overdue 阶段不得清除、回退或改写，除非用户明确授权。',
     parameters: {
       type: 'object',
       properties: {
         sessionId: { type: 'string', description: '会话ID；通常留空以自动绑定当前会话' },
+        operation: { type: 'string', enum: ['init-plan', 'update-phase', 'migrate-plan'], description: '显式操作；未填写时兼容既有阶段更新调用' },
+        _initPlan: { type: 'boolean', description: '旧初始化入口；等价于 operation=init-plan' },
+        userAuthorizedMigration: { type: 'boolean', description: '仅当用户明确授权v1迁移到v2时设为true' },
+        migrationReason: { type: 'string', description: '迁移原因' },
+        introduction: { type: 'string', description: '完整计划说明' },
+        finalObjective: { type: 'object', description: 'v2新计划必填：description、结构化metrics和最终deliverables' },
         phase_id: { type: 'string', description: '语义化阶段ID，如 data-prep、train-baseline、full-eval' },
         userAuthorizedAudit: { type: 'boolean', description: '仅当用户明确授权补录终态审计字段时设为 true' },
         auditSupplement: {
@@ -514,6 +647,8 @@ export function apply(ctx, config = {}) {
         overdue: { type: 'boolean', description: '是否逾期' },
         result: { type: 'string', description: '包含具体数值的阶段结果' },
         progress: { type: 'number', description: '阶段完成度 0-100', minimum: 0, maximum: 100 },
+        metricResearch: { type: 'object', description: 'v2必填：调研问题、来源、候选指标、已选指标及选择理由' },
+        objectiveContribution: { type: 'object', description: 'v2必填：关联最终指标、影响机制、证据等级、不确定性和验证方案' },
         executionPlan: {
           type: 'object',
           description: '阶段执行与资源并行计划；进入 in-progress 前必填',
@@ -589,6 +724,10 @@ export function apply(ctx, config = {}) {
               operator: { type: 'string', enum: ['>=', '>', '<=', '<', '=='] },
               targetValue: { type: 'number' },
               unit: { type: 'string' },
+              kind: { type: 'string', enum: ['quality', 'process', 'final'], description: 'v2必填；过程指标不能单独完成阶段' },
+              measurement: { type: 'string', description: 'v2必填：测量方法' },
+              limitations: { type: 'string', description: 'v2必填：指标局限性' },
+              thresholdBasis: { type: 'object', description: 'v2必填：阈值类型、证据与理由' },
             },
             required: ['key', 'value', 'operator', 'targetValue'],
           },
@@ -650,7 +789,7 @@ export function apply(ctx, config = {}) {
         const previousPhase = index > 0 ? plan.timeline[index - 1] : null
         const next = args.userAuthorizedAudit === true
           ? applyAuditSupplement(item, args.auditSupplement, at, settings)
-          : preparePhaseUpdate(item, args, at, settings, { previousPhaseCompletedAt: previousPhase && previousPhase.completedAt })
+          : preparePhaseUpdate(item, args, at, settings, { previousPhaseCompletedAt: previousPhase && previousPhase.completedAt, schemaVersion: plan.schemaVersion || 1, finalObjective: plan.finalObjective })
         if (index >= 0) plan.timeline[index] = next
         else {
           if (args.userAuthorizedAudit === true) throw new Error('不能为不存在的阶段补录终态审计')

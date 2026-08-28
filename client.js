@@ -184,6 +184,15 @@ window.__ModuleLoader__.load({
             ? React.createElement('div', { className: 'pt-attempt' },
                 React.createElement('strong', null, '最近调整：'), lastAttempt.summary + '；调研：' + lastAttempt.findings + '；下一轮：' + lastAttempt.adjustment)
             : null,
+          item.objectiveContribution
+            ? React.createElement('div', { className: 'pt-attempt' },
+                React.createElement('strong', null, '最终目标贡献：'), item.objectiveContribution.finalObjectiveKeys.join('、') + ' · ' + item.objectiveContribution.mechanism,
+                React.createElement('div', null, '证据等级：' + item.objectiveContribution.evidenceLevel + '；不确定性：' + item.objectiveContribution.uncertainty),
+                React.createElement('div', null, '验证方案：' + item.objectiveContribution.validationPlan))
+            : null,
+          item.metricResearch
+            ? React.createElement('div', { className: 'pt-attempt' }, React.createElement('strong', null, '指标调研：'), '已比较 ' + item.metricResearch.candidateMetrics.length + ' 个候选指标；选择 ' + item.metricResearch.selectedMetrics.join('、') + '。' + item.metricResearch.selectionReason)
+            : null,
           // Warning for empty metrics
           hasEmptyMetrics
             ? React.createElement('div', { className: 'pt-note is-warn' }, '⚠️ 已完成但未填写具体指标（如HR@10、NDCG@10、MRR）')
@@ -277,7 +286,7 @@ window.__ModuleLoader__.load({
         React.createElement('div', { className: 'pt-board' },
           // Summary bar
           React.createElement('div', { className: 'pt-summary' },
-            React.createElement('span', null, '进程目标', React.createElement('strong', null, ' ' + total + '阶段 · 已结束 ' + terminal + '（完成' + done + ' / 逾期' + overdueCount + '）')),
+            React.createElement('span', null, '进程目标 ', React.createElement('strong', null, 'v' + (plan.schemaVersion || 1) + ' · ' + total + '阶段 · 已结束 ' + terminal + '（完成' + done + ' / 逾期' + overdueCount + '）')),
             React.createElement('span', null, '终态进度 ' + pct + '% · 质量达标 ' + qualityPassed + '/' + total + ' · ' + overallStatus)
           ),
           // Main box
@@ -299,6 +308,13 @@ window.__ModuleLoader__.load({
               ),
               React.createElement('div', { className: 'pt-percent' }, pct + '%')
             ),
+            plan.schemaVersion === 2 && plan.finalObjective
+              ? React.createElement('div', { className: 'pt-intro' },
+                  React.createElement('strong', null, '最终目标 · '), plan.finalObjective.description,
+                  React.createElement('div', { className: 'pt-metrics' }, (plan.finalObjective.metrics || []).map(function(m, i) {
+                    return React.createElement('span', { key: i, className: 'pt-metric' }, m.key + ' ' + m.operator + ' ' + m.targetValue + (m.unit || ''))
+                  })))
+              : React.createElement('div', { className: 'pt-intro' }, React.createElement('strong', null, '兼容模式 · '), '这是v1旧计划，继续按原规则执行；新建计划使用v2质量贡献契约。'),
             // Introduction as full contract
             plan.introduction
               ? React.createElement('div', { className: 'pt-intro' }, React.createElement('strong', null, 'full contract · '), plan.introduction)

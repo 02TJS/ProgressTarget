@@ -1,6 +1,6 @@
 {
   "name": "dsh-progress-target",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Persistent, quality-gated, resource-aware execution plans for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
@@ -30,6 +30,7 @@
     "CONTRIBUTING.md",
     "README.md",
     "README.zh-CN.md",
+    "V2-CONTRACT.zh-CN.md",
     "LICENSE"
   ],
   "dsh": {
