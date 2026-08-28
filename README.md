@@ -17,6 +17,9 @@ ProgressTarget turns a plan into an enforceable execution contract:
 - **Persistent per-session plans** — every conversation owns an independent plan.
 - **Semantic phases** — split by real dependencies, not mechanical quarters.
 - **Two hard gates** — quality targets and usable deliverables are evaluated separately.
+- **Goal-linked phase quality** — each v2 phase explains how its quality protects or validates the final objective.
+- **Research before metrics** — compare candidate proxies, cite sources, define measurement and limitations, and justify thresholds before execution.
+- **Honest uncertainty** — unknown impact magnitude stays `null` and is resolved through pilot, ablation, or controlled validation rather than fabricated precision.
 - **Deadline-aware outcomes** — `completed` means passed on time; `overdue` means late but still usable.
 - **Evidence-first delivery** — required artifacts need acceptance criteria and evidence.
 - **Dynamic resource discovery** — refresh all configured GPU servers at phase start, transition, and replan.
@@ -106,9 +109,21 @@ Do not commit runtime plan files: `.gitignore` excludes `.progress-target/`.
 - Never place credentials, private SSH keys, tokens, or confidential dataset paths in evidence fields.
 - The plugin records evidence supplied by the agent but does not manage cluster credentials.
 
-## Contract compatibility
+## v2 quality-contribution contract
 
-Existing plans without `schemaVersion` continue under the v1 rules and are never silently rewritten. New plans use v2 and must define a final objective plus researched phase-quality proxies, traceable sources, measurement methods, threshold bases, limitations, uncertainty, and validation plans. Unknown impact magnitude may remain `null`; invented precision is rejected. See the [v2 quality-contribution contract](V2-CONTRACT.zh-CN.md).
+New plans use `schemaVersion: 2` and must define a structured `finalObjective` with final metrics and deliverables. Every phase must then provide:
+
+- `metricResearch`: research questions, traceable sources, candidate metrics, selected metrics, and selection rationale;
+- `objectiveContribution`: linked final metric keys, causal mechanism, evidence level, uncertainty, risk if missed, and a validation plan;
+- metric metadata: `kind`, measurement method, limitations, and threshold provenance.
+
+A v2 phase cannot pass with process-only metrics such as “job finished” or “file created.” At least one researched `quality` or `final` metric must protect, improve, or validate the final objective. Vacuous existence thresholds such as `count > 0`, `files > 0`, or a set of quality metrics that are all merely `> 0`/`>= 0` are rejected. An `adaptive` threshold is exploratory only and must be frozen to a justified formal threshold after research or a pilot before the production phase can proceed. If the impact magnitude cannot yet be estimated, `impactEstimate` should be `null`; the phase must state uncertainty and schedule a pilot, ablation, or controlled validation instead of inventing a number.
+
+## Contract compatibility and migration
+
+Existing plans without `schemaVersion` continue under the v1 rules and are never silently rewritten. They can still update progress, finish phases, and advance under their original contract.
+
+Migration is explicit and transactional. `operation="migrate-plan"` requires `userAuthorizedMigration=true`, a reason, a complete final objective, and v2 contracts for every existing phase. Migration cannot add or remove phases or rewrite existing statuses and completion times. If any validation fails, the stored v1 plan remains unchanged. See the [full v2 contract and migration example](V2-CONTRACT.zh-CN.md).
 
 ## Documentation
 

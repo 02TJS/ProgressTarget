@@ -17,6 +17,7 @@ const EMPTY_PLAN = {
 
 const EVIDENCE_LEVELS = new Set(['hypothesis', 'literature-supported', 'pilot-supported', 'validated'])
 const THRESHOLD_BASIS_TYPES = new Set(['requirement', 'literature', 'historical-baseline', 'pilot-baseline', 'expert-judgment', 'adaptive'])
+const TRIVIAL_METRIC_KEYS = /^(count|数量|个数|完成数|文件数|样本数|记录数|结果数|产物数)$/i
 
 function nowIso() {
   return new Date().toISOString()
@@ -167,6 +168,13 @@ function normalizeMetric(metric, options = {}) {
     result.measurement = requiredText(metric.measurement, key + '.measurement')
     result.limitations = requiredText(metric.limitations, key + '.limitations')
     result.thresholdBasis = normalizeThresholdBasis(metric.thresholdBasis, key)
+    const trivialPositive = result.kind !== 'process' && result.targetValue === 0 && ['>', '>='].includes(result.operator)
+    if (trivialPositive && (TRIVIAL_METRIC_KEYS.test(key) || /存在|非空|生成|完成|成功/.test(result.measurement))) {
+      throw new Error(key + ' 使用了无效的“>0/≥0”存在性目标；请设置能区分质量好坏、与最终目标相关且有依据的阈值')
+    }
+    if (result.kind !== 'process' && result.thresholdBasis.type === 'adaptive') {
+      throw new Error(key + ' 的 adaptive 阈值尚未冻结；请先完成调研/pilot并更新为有证据的正式阈值，再进入正式阶段')
+    }
   }
   return result
 }
@@ -410,6 +418,8 @@ function preparePhaseUpdate(item, src, at, settings, options = {}) {
   if (options.schemaVersion === 2 && requestedStatus !== 'pending') {
     if (!next.metricResearch || !next.objectiveContribution) throw new Error('v2 阶段启动前必须完成指标调研和最终目标贡献契约')
     if (!next.metrics.some(metric => metric.kind === 'quality' || metric.kind === 'final')) throw new Error('v2 阶段至少需要一个影响最终目标的 quality/final 指标；过程指标不能单独门控')
+    const meaningfulQuality = next.metrics.filter(metric => metric.kind === 'quality' || metric.kind === 'final')
+    if (meaningfulQuality.every(metric => metric.targetValue === 0 && ['>', '>='].includes(metric.operator))) throw new Error('阶段质量目标不能全部是“>0/≥0”；必须设置能区分质量好坏且有阈值依据的目标')
     const selected = new Set(next.metricResearch.selectedMetrics)
     const unresearched = next.metrics.filter(metric => (metric.kind === 'quality' || metric.kind === 'final') && !selected.has(metric.key))
     if (unresearched.length) throw new Error('质量指标必须来自 metricResearch.selectedMetrics：' + unresearched.map(metric => metric.key).join(', '))
