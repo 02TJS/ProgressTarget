@@ -20,6 +20,7 @@ ProgressTarget turns a plan into an enforceable execution contract:
 - **Goal-linked phase quality** — each v2 phase explains how its quality protects or validates the final objective.
 - **Research before metrics** — compare candidate proxies, cite sources, define measurement and limitations, and justify thresholds before execution.
 - **Honest uncertainty** — unknown impact magnitude stays `null` and is resolved through pilot, ablation, or controlled validation rather than fabricated precision.
+- **Beijing-time deadlines** — every timestamp is stored with the explicit `+08:00` offset and displayed in Asia/Shanghai, independent of Host or browser timezone.
 - **Deadline-aware outcomes** — `completed` means passed on time; `overdue` means late but still usable.
 - **Evidence-first delivery** — required artifacts need acceptance criteria and evidence.
 - **Dynamic resource discovery** — refresh all configured GPU servers at phase start, transition, and replan.

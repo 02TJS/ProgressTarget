@@ -19,8 +19,15 @@ const EVIDENCE_LEVELS = new Set(['hypothesis', 'literature-supported', 'pilot-su
 const THRESHOLD_BASIS_TYPES = new Set(['requirement', 'literature', 'historical-baseline', 'pilot-baseline', 'expert-judgment', 'adaptive'])
 const TRIVIAL_METRIC_KEYS = /^(count|数量|个数|完成数|文件数|样本数|记录数|结果数|产物数)$/i
 
+function beijingIso(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (!Number.isFinite(date.getTime())) throw new Error('无效时间')
+  const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+  return shifted.toISOString().replace('Z', '+08:00')
+}
+
 function nowIso() {
-  return new Date().toISOString()
+  return beijingIso()
 }
 
 function makePhase(id, at = nowIso()) {
@@ -114,9 +121,13 @@ function requiredText(value, name) {
 function optionalIso(value, name) {
   if (value === undefined) return undefined
   const text = requiredText(value, name)
+  if (!/(Z|[+-]\d{2}:\d{2})$/i.test(text)) throw new Error(name + ' 必须是带时区的 ISO 8601 时间；请使用北京时间 +08:00')
   const ms = Date.parse(text)
-  if (!Number.isFinite(ms)) throw new Error(name + ' 必须是 ISO 8601 时间')
-  return new Date(ms).toISOString()
+  if (!Number.isFinite(ms)) throw new Error(name + ' 必须是有效 ISO 8601 时间')
+  const offset = text.match(/([+-])(\d{2}):(\d{2})$/)
+  const minutes = offset ? (offset[1] === '-' ? -1 : 1) * (Number(offset[2]) * 60 + Number(offset[3])) : 0
+  if (minutes !== 480) throw new Error(name + ' 必须使用北京时间 UTC+08:00')
+  return beijingIso(ms)
 }
 
 function normalizeFinalObjective(value) {
@@ -618,7 +629,7 @@ export function apply(ctx, config = {}) {
 
   ctx.tools.register({
     name: 'update-progress-target',
-    description: '更新当前会话某个进程目标阶段。\n\n【持续尝试：禁止轮数上限】\n不得为 continuation、重试或调研预设 maxRounds、maxRetries、stopAfterAttempts 等轮数上限。阶段未超过 deadlineAt、质量未达标且仍有可执行 adjustment 时，必须持续调研、调整和重试；轮数、尝试次数、进展缓慢或自动续跑预算不得作为停止理由。只允许因质量与交付物合法结束、用户专属输入、权限/安全确认或有证据的不可解外部阻塞而停止。\n\n【契约版本】\n既有无 schemaVersion 的计划按 v1 兼容执行；新建计划必须使用 v2，先定义 finalObjective。每阶段必须先充分调研候选质量指标，记录来源、测量方法、阈值依据、局限性、影响机制、不确定性与验证方案。无法可靠估计贡献幅度时使用 null，禁止编造。只有过程指标不能完成阶段。\n\n【根本目标】\n以完整完成计划为根本。每阶段规划至少一个必需交付物 deliverable；没有可供下一阶段消费的交付物，阶段即使超时也不能结束，且不得启动后续阶段。\n\n【时间规则】\n首次创建自动记录 createdAt；首次进入 in-progress 自动记录 startedAt。规划或启动每个阶段时必须设置 ISO 8601 deadlineAt。逾期但交付物缺失时保持 in-progress，填写 attempt 并重估新的 deadlineAt 继续执行。\n\n【双门控】\n质量门 metrics 决定是否达标；交付物门 deliverables 决定能否离开阶段。全部质量目标达标、交付物齐备且未超时才允许 completed。超过 deadlineAt 后，只有必需交付物全部 ready 且有 evidence 时才允许 overdue（质量可不达标）；交付物缺失则不能 overdue。\n硬目标未达标或交付物缺失时必须填写 attempt.summary、attempt.findings、attempt.adjustment，总结本轮结果、调研结论和下一轮调整后继续尝试。\n\n【资源发现与并行加速】\n每次阶段从 pending 进入 in-progress，以及进行中阶段重规划 executionPlan 时，都必须重新查询插件 requiredServers 配置中的全部资源服务器，并在 executionPlan.resourceDiscovery 中记录每台服务器状态、可用GPU数、查询时间和证据。查询快照不得超过配置的 resourceDiscoveryMaxAgeMinutes；阶段切换时 queriedAt 必须晚于上一阶段 completedAt，且不得复用本阶段旧快照。插件会保留 resourceDiscoveryHistory。不得锁定第一台GPU后停止查询。推理、评估、数据处理等可分片任务应设置 shardable=true；若多台服务器有可用GPU，resources 必须覆盖所有可用服务器并写明各自 shard。不可分片时必须填写 shardReason。\n每阶段必须填写 executionPlan。预计超过30分钟时，应主动拆出可独立推进的GPU、CPU、后台作业、子进程或调研分支并尽可能并行利用可用资源；parallelizable=true 时至少安排2个资源分支。确实只能串行时填写 serialReason。初始巡检仅为5分钟、预计总时间50%、75%；100%是结果收获点，不是普通巡检。每次巡检检查资源空闲、慢分支、可新增并行工作和各分支交付物。\n\n【巡检未结束】\n在任何计划巡检点，若任务进程/后台作业仍在运行，或阶段状态不是 completed/overdue，或质量目标/交付物门未通过，即判定“未结束”。应立即根据当前进度、速度和剩余工作量重新估计剩余时间，并重新分析并行资源；此后只安排该剩余时间的50%与100%两个检查点。100%时仍未结束，则再次重估、重新分配资源并重复50%/100%，直到完成、可逾期交付或出现明确阻塞。禁止恢复5分钟/75%巡检或额外轮询。\n\n【自动推进】\n阶段超过 deadlineAt、质量门未通过但必需交付物全部 ready 且有 evidence 时，应立即标记当前阶段 overdue，并使用合法交付物启动下一阶段；不得停下来等待用户审批。只有缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞时才询问用户。\n\n【阶段拆分】\n按任务实际依赖拆分语义阶段，不要机械四等分；phase_id 使用英文短横线。\n\n【留存】\ncompleted/overdue 阶段不得清除、回退或改写，除非用户明确授权。',
+    description: '更新当前会话某个进程目标阶段。\n\n【持续尝试：禁止轮数上限】\n不得为 continuation、重试或调研预设 maxRounds、maxRetries、stopAfterAttempts 等轮数上限。阶段未超过 deadlineAt、质量未达标且仍有可执行 adjustment 时，必须持续调研、调整和重试；轮数、尝试次数、进展缓慢或自动续跑预算不得作为停止理由。只允许因质量与交付物合法结束、用户专属输入、权限/安全确认或有证据的不可解外部阻塞而停止。\n\n【契约版本】\n既有无 schemaVersion 的计划按 v1 兼容执行；新建计划必须使用 v2，先定义 finalObjective。每阶段必须先充分调研候选质量指标，记录来源、测量方法、阈值依据、局限性、影响机制、不确定性与验证方案。无法可靠估计贡献幅度时使用 null，禁止编造。只有过程指标不能完成阶段。\n\n【根本目标】\n以完整完成计划为根本。每阶段规划至少一个必需交付物 deliverable；没有可供下一阶段消费的交付物，阶段即使超时也不能结束，且不得启动后续阶段。\n\n【时间规则】\n所有时间统一使用北京时间 UTC+08:00，并以带 +08:00 偏移的 ISO 8601 字符串存储；不接受无时区、Z或其他偏移。首次创建自动记录 createdAt；首次进入 in-progress 自动记录 startedAt。规划或启动每个阶段时必须设置北京时间 deadlineAt。逾期但交付物缺失时保持 in-progress，填写 attempt 并重估新的 deadlineAt 继续执行。\n\n【双门控】\n质量门 metrics 决定是否达标；交付物门 deliverables 决定能否离开阶段。全部质量目标达标、交付物齐备且未超时才允许 completed。超过 deadlineAt 后，只有必需交付物全部 ready 且有 evidence 时才允许 overdue（质量可不达标）；交付物缺失则不能 overdue。\n硬目标未达标或交付物缺失时必须填写 attempt.summary、attempt.findings、attempt.adjustment，总结本轮结果、调研结论和下一轮调整后继续尝试。\n\n【资源发现与并行加速】\n每次阶段从 pending 进入 in-progress，以及进行中阶段重规划 executionPlan 时，都必须重新查询插件 requiredServers 配置中的全部资源服务器，并在 executionPlan.resourceDiscovery 中记录每台服务器状态、可用GPU数、查询时间和证据。查询快照不得超过配置的 resourceDiscoveryMaxAgeMinutes；阶段切换时 queriedAt 必须晚于上一阶段 completedAt，且不得复用本阶段旧快照。插件会保留 resourceDiscoveryHistory。不得锁定第一台GPU后停止查询。推理、评估、数据处理等可分片任务应设置 shardable=true；若多台服务器有可用GPU，resources 必须覆盖所有可用服务器并写明各自 shard。不可分片时必须填写 shardReason。\n每阶段必须填写 executionPlan。预计超过30分钟时，应主动拆出可独立推进的GPU、CPU、后台作业、子进程或调研分支并尽可能并行利用可用资源；parallelizable=true 时至少安排2个资源分支。确实只能串行时填写 serialReason。初始巡检仅为5分钟、预计总时间50%、75%；100%是结果收获点，不是普通巡检。每次巡检检查资源空闲、慢分支、可新增并行工作和各分支交付物。\n\n【巡检未结束】\n在任何计划巡检点，若任务进程/后台作业仍在运行，或阶段状态不是 completed/overdue，或质量目标/交付物门未通过，即判定“未结束”。应立即根据当前进度、速度和剩余工作量重新估计剩余时间，并重新分析并行资源；此后只安排该剩余时间的50%与100%两个检查点。100%时仍未结束，则再次重估、重新分配资源并重复50%/100%，直到完成、可逾期交付或出现明确阻塞。禁止恢复5分钟/75%巡检或额外轮询。\n\n【自动推进】\n阶段超过 deadlineAt、质量门未通过但必需交付物全部 ready 且有 evidence 时，应立即标记当前阶段 overdue，并使用合法交付物启动下一阶段；不得停下来等待用户审批。只有缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞时才询问用户。\n\n【阶段拆分】\n按任务实际依赖拆分语义阶段，不要机械四等分；phase_id 使用英文短横线。\n\n【留存】\ncompleted/overdue 阶段不得清除、回退或改写，除非用户明确授权。',
     parameters: {
       type: 'object',
       properties: {
@@ -651,8 +662,8 @@ export function apply(ctx, config = {}) {
         timeline: { type: 'string', description: '人类可读时间范围' },
         what: { type: 'string', description: '做什么' },
         purpose: { type: 'string', description: '目的' },
-        startedAt: { type: 'string', description: 'ISO 8601 起始时间；通常首次 in-progress 自动记录' },
-        deadlineAt: { type: 'string', description: 'ISO 8601 硬截止时间；规划/启动阶段时必填' },
+        startedAt: { type: 'string', description: '北京时间 ISO 8601（必须+08:00）；通常首次 in-progress 自动记录' },
+        deadlineAt: { type: 'string', description: '北京时间 ISO 8601（必须+08:00）硬截止时间；规划/启动阶段时必填' },
         status: { type: 'string', enum: ['pending', 'in-progress', 'completed', 'overdue'], description: '阶段状态' },
         overdue: { type: 'boolean', description: '是否逾期' },
         result: { type: 'string', description: '包含具体数值的阶段结果' },

@@ -96,7 +96,7 @@ window.__ModuleLoader__.load({
     function displayTime(value) {
       if (!value) return '未记录'
       var date = new Date(value)
-      return isNaN(date.getTime()) ? value : date.toLocaleString()
+      return isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(date) + '（北京时间）'
     }
 
     function Task(props) {
