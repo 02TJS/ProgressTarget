@@ -1,4 +1,4 @@
-﻿import { readFile, writeFile, mkdir } from 'node:fs/promises'
+﻿import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 
@@ -96,6 +96,11 @@ async function savePlan(sessionId, plan, settings) {
   const dir = dirname(path)
   if (!existsSync(dir)) await mkdir(dir, { recursive: true })
   await writeFile(path, JSON.stringify(plan, null, 2), 'utf-8')
+}
+
+async function deletePlan(sessionId, settings) {
+  const path = getDataPath(sessionId, settings)
+  if (existsSync(path)) await unlink(path)
 }
 
 function sendJson(res, status, value) {
@@ -553,7 +558,21 @@ export function apply(ctx, config = {}) {
           if (!plan) plan = clone(EMPTY_PLAN)
           if (!plan.createdAt) plan.createdAt = at
 
-          if (body.operation === 'migrate-plan') {
+          if (body.operation === 'delete-plan') {
+            if (body.userAuthorizedDeletion !== true) throw new Error('删除整份计划必须由用户明确授权 userAuthorizedDeletion=true')
+            requiredText(body.deletionReason, 'deletionReason')
+            await deletePlan(sessionId, settings)
+            sendJson(res, 200, null)
+            return
+          } else if (body.operation === 'delete-phase') {
+            if (body.userAuthorizedDeletion !== true) throw new Error('删除阶段必须由用户明确授权 userAuthorizedDeletion=true')
+            const phaseId = requiredText(body.phase_id, 'phase_id')
+            requiredText(body.deletionReason, 'deletionReason')
+            const index = (plan.timeline || []).findIndex(item => item.id === phaseId)
+            if (index < 0) throw new Error('阶段不存在：' + phaseId)
+            plan.timeline.splice(index, 1)
+            plan.deletionAudit = [...(Array.isArray(plan.deletionAudit) ? plan.deletionAudit : []), { at, operation: 'delete-phase', phaseId, reason: body.deletionReason }]
+          } else if (body.operation === 'migrate-plan') {
             if (body.userAuthorizedMigration !== true) throw new Error('迁移v2必须由用户明确授权 userAuthorizedMigration=true')
             if (!Array.isArray(plan.timeline) || !plan.timeline.length) throw new Error('没有可迁移的既有计划')
             if ((plan.schemaVersion || 1) !== 1) throw new Error('只有v1计划可以迁移到v2')
@@ -629,15 +648,17 @@ export function apply(ctx, config = {}) {
 
   ctx.tools.register({
     name: 'update-progress-target',
-    description: '更新当前会话某个进程目标阶段。\n\n【持续尝试：禁止轮数上限】\n不得为 continuation、重试或调研预设 maxRounds、maxRetries、stopAfterAttempts 等轮数上限。阶段未超过 deadlineAt、质量未达标且仍有可执行 adjustment 时，必须持续调研、调整和重试；轮数、尝试次数、进展缓慢或自动续跑预算不得作为停止理由。只允许因质量与交付物合法结束、用户专属输入、权限/安全确认或有证据的不可解外部阻塞而停止。\n\n【契约版本】\n既有无 schemaVersion 的计划按 v1 兼容执行；新建计划必须使用 v2，先定义 finalObjective。每阶段必须先充分调研候选质量指标，记录来源、测量方法、阈值依据、局限性、影响机制、不确定性与验证方案。无法可靠估计贡献幅度时使用 null，禁止编造。只有过程指标不能完成阶段。\n\n【根本目标】\n以完整完成计划为根本。每阶段规划至少一个必需交付物 deliverable；没有可供下一阶段消费的交付物，阶段即使超时也不能结束，且不得启动后续阶段。\n\n【时间规则】\n所有时间统一使用北京时间 UTC+08:00，并以带 +08:00 偏移的 ISO 8601 字符串存储；不接受无时区、Z或其他偏移。首次创建自动记录 createdAt；首次进入 in-progress 自动记录 startedAt。规划或启动每个阶段时必须设置北京时间 deadlineAt。逾期但交付物缺失时保持 in-progress，填写 attempt 并重估新的 deadlineAt 继续执行。\n\n【双门控】\n质量门 metrics 决定是否达标；交付物门 deliverables 决定能否离开阶段。全部质量目标达标、交付物齐备且未超时才允许 completed。超过 deadlineAt 后，只有必需交付物全部 ready 且有 evidence 时才允许 overdue（质量可不达标）；交付物缺失则不能 overdue。\n硬目标未达标或交付物缺失时必须填写 attempt.summary、attempt.findings、attempt.adjustment，总结本轮结果、调研结论和下一轮调整后继续尝试。\n\n【资源发现与并行加速】\n每次阶段从 pending 进入 in-progress，以及进行中阶段重规划 executionPlan 时，都必须重新查询插件 requiredServers 配置中的全部资源服务器，并在 executionPlan.resourceDiscovery 中记录每台服务器状态、可用GPU数、查询时间和证据。查询快照不得超过配置的 resourceDiscoveryMaxAgeMinutes；阶段切换时 queriedAt 必须晚于上一阶段 completedAt，且不得复用本阶段旧快照。插件会保留 resourceDiscoveryHistory。不得锁定第一台GPU后停止查询。推理、评估、数据处理等可分片任务应设置 shardable=true；若多台服务器有可用GPU，resources 必须覆盖所有可用服务器并写明各自 shard。不可分片时必须填写 shardReason。\n每阶段必须填写 executionPlan。预计超过30分钟时，应主动拆出可独立推进的GPU、CPU、后台作业、子进程或调研分支并尽可能并行利用可用资源；parallelizable=true 时至少安排2个资源分支。确实只能串行时填写 serialReason。初始巡检仅为5分钟、预计总时间50%、75%；100%是结果收获点，不是普通巡检。每次巡检检查资源空闲、慢分支、可新增并行工作和各分支交付物。\n\n【巡检未结束】\n在任何计划巡检点，若任务进程/后台作业仍在运行，或阶段状态不是 completed/overdue，或质量目标/交付物门未通过，即判定“未结束”。应立即根据当前进度、速度和剩余工作量重新估计剩余时间，并重新分析并行资源；此后只安排该剩余时间的50%与100%两个检查点。100%时仍未结束，则再次重估、重新分配资源并重复50%/100%，直到完成、可逾期交付或出现明确阻塞。禁止恢复5分钟/75%巡检或额外轮询。\n\n【自动推进】\n阶段超过 deadlineAt、质量门未通过但必需交付物全部 ready 且有 evidence 时，应立即标记当前阶段 overdue，并使用合法交付物启动下一阶段；不得停下来等待用户审批。只有缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞时才询问用户。\n\n【阶段拆分】\n按任务实际依赖拆分语义阶段，不要机械四等分；phase_id 使用英文短横线。\n\n【留存】\ncompleted/overdue 阶段不得清除、回退或改写，除非用户明确授权。',
+    description: '更新当前会话某个进程目标阶段。\n\n【持续尝试：禁止轮数上限】\n不得为 continuation、重试或调研预设 maxRounds、maxRetries、stopAfterAttempts 等轮数上限。阶段未超过 deadlineAt、质量未达标且仍有可执行 adjustment 时，必须持续调研、调整和重试；轮数、尝试次数、进展缓慢或自动续跑预算不得作为停止理由。只允许因质量与交付物合法结束、用户专属输入、权限/安全确认或有证据的不可解外部阻塞而停止。\n\n【契约版本】\n既有无 schemaVersion 的计划按 v1 兼容执行；新建计划必须使用 v2，先定义 finalObjective。每阶段必须先充分调研候选质量指标，记录来源、测量方法、阈值依据、局限性、影响机制、不确定性与验证方案。无法可靠估计贡献幅度时使用 null，禁止编造。只有过程指标不能完成阶段。\n\n【根本目标】\n以完整完成计划为根本。每阶段规划至少一个必需交付物 deliverable；没有可供下一阶段消费的交付物，阶段即使超时也不能结束，且不得启动后续阶段。\n\n【时间规则】\n所有时间统一使用北京时间 UTC+08:00，并以带 +08:00 偏移的 ISO 8601 字符串存储；不接受无时区、Z或其他偏移。首次创建自动记录 createdAt；首次进入 in-progress 自动记录 startedAt。规划或启动每个阶段时必须设置北京时间 deadlineAt。逾期但交付物缺失时保持 in-progress，填写 attempt 并重估新的 deadlineAt 继续执行。\n\n【双门控】\n质量门 metrics 决定是否达标；交付物门 deliverables 决定能否离开阶段。全部质量目标达标、交付物齐备且未超时才允许 completed。超过 deadlineAt 后，只有必需交付物全部 ready 且有 evidence 时才允许 overdue（质量可不达标）；交付物缺失则不能 overdue。\n硬目标未达标或交付物缺失时必须填写 attempt.summary、attempt.findings、attempt.adjustment，总结本轮结果、调研结论和下一轮调整后继续尝试。\n\n【资源发现与并行加速】\n每次阶段从 pending 进入 in-progress，以及进行中阶段重规划 executionPlan 时，都必须重新查询插件 requiredServers 配置中的全部资源服务器，并在 executionPlan.resourceDiscovery 中记录每台服务器状态、可用GPU数、查询时间和证据。查询快照不得超过配置的 resourceDiscoveryMaxAgeMinutes；阶段切换时 queriedAt 必须晚于上一阶段 completedAt，且不得复用本阶段旧快照。插件会保留 resourceDiscoveryHistory。不得锁定第一台GPU后停止查询。推理、评估、数据处理等可分片任务应设置 shardable=true；若多台服务器有可用GPU，resources 必须覆盖所有可用服务器并写明各自 shard。不可分片时必须填写 shardReason。\n每阶段必须填写 executionPlan。预计超过30分钟时，应主动拆出可独立推进的GPU、CPU、后台作业、子进程或调研分支并尽可能并行利用可用资源；parallelizable=true 时至少安排2个资源分支。确实只能串行时填写 serialReason。初始巡检仅为5分钟、预计总时间50%、75%；100%是结果收获点，不是普通巡检。每次巡检检查资源空闲、慢分支、可新增并行工作和各分支交付物。\n\n【巡检未结束】\n在任何计划巡检点，若任务进程/后台作业仍在运行，或阶段状态不是 completed/overdue，或质量目标/交付物门未通过，即判定“未结束”。应立即根据当前进度、速度和剩余工作量重新估计剩余时间，并重新分析并行资源；此后只安排该剩余时间的50%与100%两个检查点。100%时仍未结束，则再次重估、重新分配资源并重复50%/100%，直到完成、可逾期交付或出现明确阻塞。禁止恢复5分钟/75%巡检或额外轮询。\n\n【自动推进】\n阶段超过 deadlineAt、质量门未通过但必需交付物全部 ready 且有 evidence 时，应立即标记当前阶段 overdue，并使用合法交付物启动下一阶段；不得停下来等待用户审批。只有缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞时才询问用户。\n\n【阶段拆分】\n按任务实际依赖拆分语义阶段，不要机械四等分；phase_id 使用英文短横线。\n\n【留存与删除】\n默认保护所有阶段，completed/overdue 不得清除、回退或改写。用户在当前请求中明确授权后，可用 operation=delete-phase 删除任意状态阶段，或 operation=delete-plan 删除整份计划；必须同时提供 userAuthorizedDeletion=true 和 deletionReason，不得自行推定授权。删除阶段保留 deletionAudit；删除整份计划会永久移除当前会话计划文件。',
     parameters: {
       type: 'object',
       properties: {
         sessionId: { type: 'string', description: '会话ID；通常留空以自动绑定当前会话' },
-        operation: { type: 'string', enum: ['init-plan', 'update-phase', 'migrate-plan'], description: '显式操作；未填写时兼容既有阶段更新调用' },
+        operation: { type: 'string', enum: ['init-plan', 'update-phase', 'migrate-plan', 'delete-phase', 'delete-plan'], description: '显式操作；删除操作必须有用户明确授权' },
         _initPlan: { type: 'boolean', description: '旧初始化入口；等价于 operation=init-plan' },
         userAuthorizedMigration: { type: 'boolean', description: '仅当用户明确授权v1迁移到v2时设为true' },
         migrationReason: { type: 'string', description: '迁移原因' },
+        userAuthorizedDeletion: { type: 'boolean', description: '仅当用户当前请求明确授权删除阶段或整份计划时设为true' },
+        deletionReason: { type: 'string', description: '删除原因；删除操作必填' },
         introduction: { type: 'string', description: '完整计划说明' },
         finalObjective: { type: 'object', description: 'v2新计划必填：description、结构化metrics和最终deliverables' },
         phase_id: { type: 'string', description: '语义化阶段ID，如 data-prep、train-baseline、full-eval' },
@@ -799,8 +820,23 @@ export function apply(ctx, config = {}) {
         let plan = await loadPlan(sessionId, settings)
         if (!plan) plan = clone(EMPTY_PLAN)
         if (!plan.createdAt) plan.createdAt = at
+        if (args.operation === 'delete-plan') {
+          if (args.userAuthorizedDeletion !== true) throw new Error('删除整份计划必须由用户明确授权 userAuthorizedDeletion=true')
+          requiredText(args.deletionReason, 'deletionReason')
+          await deletePlan(sessionId, settings)
+          return { success: true, warning: '', mustContinue: false, nextPhaseAllowed: false, nextPhaseId: '', nextAction: '整份计划已按用户授权删除。', requiresUserInput: false }
+        }
         const phaseId = requiredText(args.phase_id, 'phase_id')
         const index = (plan.timeline || []).findIndex(item => item.id === phaseId)
+        if (args.operation === 'delete-phase') {
+          if (args.userAuthorizedDeletion !== true) throw new Error('删除阶段必须由用户明确授权 userAuthorizedDeletion=true')
+          requiredText(args.deletionReason, 'deletionReason')
+          if (index < 0) throw new Error('阶段不存在：' + phaseId)
+          plan.timeline.splice(index, 1)
+          plan.deletionAudit = [...(Array.isArray(plan.deletionAudit) ? plan.deletionAudit : []), { at, operation: 'delete-phase', phaseId, reason: args.deletionReason }]
+          await savePlan(sessionId, plan, settings)
+          return { success: true, warning: '', mustContinue: false, nextPhaseAllowed: false, nextPhaseId: '', nextAction: '阶段 ' + phaseId + ' 已按用户授权删除。', requiresUserInput: false }
+        }
         const item = index >= 0 ? plan.timeline[index] : makePhase(phaseId, at)
         const requestedStatus = args.status === undefined ? item.status : String(args.status)
         if (requestedStatus === 'in-progress' && index > 0) {

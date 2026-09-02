@@ -342,7 +342,21 @@ Content-Type: application/json
 
 已经结束的阶段不得被重新初始化、清空、覆盖或回退。再次初始化计划时，插件会忽略同 ID 的终态输入，并自动把缺失的 `completed`/`overdue` 阶段追加回计划，完整保留其原始记录。
 
-### 6.1 用户授权的终态审计补录
+### 6.1 用户授权删除
+
+默认情况下所有阶段都受保护，尤其是 `completed` 和 `overdue`。但用户在当前请求中明确授权后，可以删除任意状态的阶段或整份计划：
+
+```json
+{"operation":"delete-phase","phase_id":"old-phase","userAuthorizedDeletion":true,"deletionReason":"用户要求清除旧阶段后重建计划"}
+```
+
+```json
+{"operation":"delete-plan","userAuthorizedDeletion":true,"deletionReason":"用户要求清除当前会话全部旧计划"}
+```
+
+两个操作都必须同时提供 `userAuthorizedDeletion=true` 和非空 `deletionReason`，Agent 不得从历史对话或模糊表述推定授权。`delete-phase` 支持 pending、in-progress、completed、overdue，并在计划的 `deletionAudit` 中记录北京时间、阶段ID和理由。`delete-plan` 永久删除当前会话的计划文件，使UI恢复“未制定目标计划表”；由于整份文件已删除，其审计理由只存在于本次工具调用记录中。
+
+### 6.2 用户授权的终态审计补录
 
 旧终态阶段缺少新格式审计字段时，用户可以明确授权补录。调用时设置：
 

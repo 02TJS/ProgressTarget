@@ -93,7 +93,7 @@ Read the complete [configuration and deployment audit](CONFIGURATION.md) before 
 | `completed` | Quality and deliverable gates passed before deadline |
 | `overdue` | Deadline passed, quality may miss, but required deliverables are usable |
 
-Required deliverables block downstream phases even after timeout. Terminal history is protected by default; administrative mutation should require explicit user authorization and an audit trail.
+Required deliverables block downstream phases even after timeout. All history is protected by default. With explicit current user authorization, `delete-phase` can remove a phase in any state and `delete-plan` can permanently remove the session's entire plan. Both require `userAuthorizedDeletion=true` and a non-empty reason; authorization must never be inferred. Phase deletion is recorded in `deletionAudit`.
 
 ## Storage
 
