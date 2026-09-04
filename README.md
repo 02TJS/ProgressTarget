@@ -15,6 +15,7 @@ Ordinary agent plans often fail in predictable ways: phases are declared complet
 ProgressTarget turns a plan into an enforceable execution contract:
 
 - **Persistent per-session plans** — every conversation owns an independent plan.
+- **First principles and minimal sufficiency** — add no phase, metric, artifact, evidence, or audit unless it changes a decision, validates final quality/usability, protects safety, or serves a real downstream requirement.
 - **Semantic phases** — split by real dependencies, not mechanical quarters.
 - **Two hard gates** — quality targets and usable deliverables are evaluated separately.
 - **Goal-linked phase quality** — each v2 phase explains how its quality protects or validates the final objective.

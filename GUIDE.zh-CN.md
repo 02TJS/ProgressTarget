@@ -1,4 +1,4 @@
-# dsh-progress-target 插件使用说明
+﻿# dsh-progress-target 插件使用说明
 
 ## 1. 用途
 
@@ -14,7 +14,11 @@ contract-freeze → data-prep → train-baseline → tune → ablation → full-
 <workspace>/.progress-target/<sessionId>.json
 ```
 
-## 2. 四项强制机制
+## 2. 强制机制
+
+### 2.0 第一性原理与最小充分原则
+
+如无必要，不增实体。每个阶段、指标、交付物、证据、资源分支或审计步骤必须至少满足一项：改变执行决策；验证最终质量或实际可用性；保护真实安全边界；满足下一阶段或用户明确提出的交付要求。不能满足时不得加入计划。已有充分证据时直接推进，不得反复审计计划是否合理。SHA、复现说明、manifest、额外报告、消融实验都不是默认要求；只有用户明确要求，或防篡改、跨环境交付、科学复现等确属最终目标必要条件时才加入。指标调研在足以选出可测指标和有依据阈值后即停止，避免为了形式继续搜索和论证。
 
 ### 2.1 时间记录
 
@@ -57,7 +61,7 @@ contract-freeze → data-prep → train-baseline → tune → ablation → full-
 {
   "name": "baseline-checkpoint",
   "required": true,
-  "acceptance": "模型权重可加载，附配置、SHA和验证日志",
+  "acceptance": "模型权重可加载，附任务所需的最小验证证据",
   "status": "pending",
   "evidence": ""
 }
@@ -182,7 +186,7 @@ update-progress-target({
     {"key":"NDCG@10","value":0.18,"operator":">=","targetValue":0.22}
   ],
   deliverables: [
-    {name:"baseline-checkpoint", required:true, acceptance:"权重可加载并附配置和SHA", status:"pending", evidence:""}
+    {name:"baseline-checkpoint", required:true, acceptance:"权重可加载并通过任务所需验证", status:"pending", evidence:""}
   ],
   attempt: {
     summary: "初始验证 HR@10=0.31、NDCG@10=0.18",
@@ -227,7 +231,7 @@ update-progress-target({
     {"key":"NDCG@10","value":0.226,"operator":">=","targetValue":0.22}
   ],
   deliverables: [
-    {name:"baseline-checkpoint", required:true, acceptance:"权重可加载并附配置和SHA", status:"ready", evidence:"artifacts/baseline/model.pt; sha256=..."}
+    {name:"baseline-checkpoint", required:true, acceptance:"权重可加载并通过任务所需验证", status:"ready", evidence:"artifacts/baseline/model.pt; load-test=pass"}
   ],
   result: "第3轮指标达标，checkpoint可加载且证据齐备"
 })
@@ -245,7 +249,7 @@ update-progress-target({
     {"key":"HR@10","value":0.392,"operator":">=","targetValue":0.40}
   ],
   deliverables: [
-    {name:"baseline-checkpoint", required:true, acceptance:"权重可加载并附配置和SHA", status:"pending", evidence:""}
+    {name:"baseline-checkpoint", required:true, acceptance:"权重可加载并通过任务所需验证", status:"pending", evidence:""}
   ],
   attempt: {
     summary: "原截止时间已过，HR@10=0.392且checkpoint尚未落盘",
@@ -270,7 +274,7 @@ update-progress-target({
     {"key":"HR@10","value":0.392,"operator":">=","targetValue":0.40}
   ],
   deliverables: [
-    {name:"baseline-checkpoint", required:true, acceptance:"权重可加载并附配置和SHA", status:"ready", evidence:"artifacts/baseline/model.pt; load-test=pass"}
+    {name:"baseline-checkpoint", required:true, acceptance:"权重可加载并通过任务所需验证", status:"ready", evidence:"artifacts/baseline/model.pt; load-test=pass"}
   ],
   result: "HR@10未达0.40，但checkpoint已交付且可加载；逾期结束，不算质量通过，可推进下一阶段"
 })
@@ -296,7 +300,7 @@ Content-Type: application/json
       "actionTitle": "数据准备",
       "timeline": "预计20分钟",
       "what": "清洗并划分全量数据",
-      "purpose": "获得可复现训练输入",
+      "purpose": "获得满足训练消费要求的输入",
       "deadlineAt": "2026-08-26T09:20:00+08:00",
       "status": "pending",
       "progress": 0,
@@ -306,14 +310,14 @@ Content-Type: application/json
         "serialReason": "",
         "resources": [
           {"id":"cpu-clean","work":"清洗数据","resource":"CPU后台作业A","expectedDeliverable":"清洗数据集","status":"planned"},
-          {"id":"cpu-schema","work":"校验schema和划分SHA","resource":"CPU后台作业B","expectedDeliverable":"dataset manifest","status":"planned"}
+          {"id":"cpu-schema","work":"校验任务所需schema和数据可用性","resource":"CPU后台作业B","expectedDeliverable":"dataset manifest","status":"planned"}
         ]
       },
       "metrics": [
         {"key":"数据覆盖率","value":0,"operator":">=","targetValue":100,"unit":"%"}
       ],
       "deliverables": [
-        {"name":"dataset-manifest","required":true,"acceptance":"含样本数、划分SHA和字段schema","status":"pending","evidence":""}
+        {"name":"dataset-manifest","required":true,"acceptance":"含任务需要的样本统计和字段schema","status":"pending","evidence":""}
       ],
       "result": "规划完成，数据覆盖率初始值=0%"
     }

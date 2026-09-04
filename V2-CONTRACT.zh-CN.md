@@ -1,4 +1,4 @@
-# v2 质量贡献契约
+﻿# v2 质量贡献契约
 
 Progress Target 对旧计划保持兼容：没有 `schemaVersion` 的既有计划视为 v1，仍可按原有 metrics、deliverables 和状态规则更新，不会在读取时自动改写。
 
@@ -20,9 +20,9 @@ Progress Target 对旧计划保持兼容：没有 `schemaVersion` 的既有计�
   "_initPlan": true,
   "introduction": "先调研并冻结数据质量代理指标，再执行训练与评估",
   "finalObjective": {
-    "description": "得到可复现且测试效果达标的模型",
+    "description": "得到满足测试效果与部署要求的模型",
     "metrics": [{"key":"NDCG@10","operator":">=","targetValue":0.25,"unit":""}],
-    "deliverables": [{"name":"production-model","acceptance":"权重可加载且附测试报告和SHA"}]
+    "deliverables": [{"name":"production-model","acceptance":"权重可加载且满足最终部署验收"}]
   },
   "timeline": [{
     "id": "data-quality",
@@ -52,7 +52,7 @@ Progress Target 对旧计划保持兼容：没有 `schemaVersion` 的既有计�
       "kind":"quality","measurement":"冲突标签数/复核标签总数","limitations":"不能识别系统性一致偏差",
       "thresholdBasis":{"type":"pilot-baseline","evidence":"artifacts/pilot-audit.json","reason":"人工复核确定1%为当前可接受上限"}
     }],
-    "deliverables": [{"name":"clean-data","required":true,"acceptance":"数据可加载并附质量报告和SHA","status":"pending","evidence":""}],
+    "deliverables": [{"name":"clean-data","required":true,"acceptance":"数据可加载且关键质量指标达标","status":"pending","evidence":""}],
     "executionPlan": {"estimatedMinutes":20,"parallelizable":false,"shardable":false,"shardReason":"小规模审计需统一抽样","serialReason":"","resourceDiscovery":{"queriedAt":"2026-08-27T02:00:00Z","servers":[]},"resources":[{"id":"audit","work":"数据审计","resource":"CPU","expectedDeliverable":"质量报告","status":"planned"}]}
   }]
 }
