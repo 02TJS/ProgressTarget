@@ -1,0 +1,27 @@
+{
+  "name": "progress-target",
+  "version": "0.1.0",
+  "description": "持久化任务计划、质量与交付物门控、持续执行检查和本地实时看板。",
+  "author": {
+    "name": "02TJS"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ProgressTarget 进度目标",
+    "shortDescription": "让长期任务有进度、有验收、可恢复。",
+    "longDescription": "从 DSH ProgressTarget 迁移的本地 Codex 插件。以统一规则校验阶段质量、必需交付物、截止时间和资源快照，提供浏览器实时看板及可选生命周期检查。",
+    "developerName": "02TJS",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "查看当前任务的进度看板。",
+      "用 ProgressTarget 为这个任务建立可验收的执行计划。"
+    ],
+    "brandColor": "#285C4B"
+  },
+  "mcpServers": "./.mcp.json",
+  "license": "MIT"
+}

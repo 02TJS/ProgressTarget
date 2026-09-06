@@ -1,151 +1,76 @@
-# DSH ProgressTarget
+# ProgressTarget
 
-<p align="center">
-  <a href="README.md">English</a> · <strong>简体中文</strong>
-</p>
+[English](README.md) · **简体中文**
 
-> 让 AI Agent 真正完成长期任务，而不只是写一份待办清单。
+为 AI Agent 的长期任务提供持久化计划、可测量的质量门和可查看的进度。每个对话维护自己的计划，先制定，再经明确授权执行。
 
-DSH ProgressTarget 是面向 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) 的持久化计划与执行控制插件。它为每个会话提供语义阶段、质量门、交付物门、截止时间、可审计重试、多资源执行计划和动态资源发现。
+本仓库包含两个可以独立安装的插件：
 
-## 为什么需要 ProgressTarget？
+| 平台 | 版本 | 进度界面 | 安装与使用 |
+|---|---|---|---|
+| DeepSeek Harness（DSH） | 2.0.1 | DSH Web 内的进度标签页 | [DSH 插件](dsh/README.zh-CN.md) |
+| Codex | 0.1.0 | 当前任务专属的本地网页看板 | [Codex 插件](codex/README.zh-CN.md) |
 
-普通 Agent 计划经常出现这些问题：没有可用交付物就宣布阶段完成；指标定义模糊；截止时间被悄悄延后；阶段转换后继续使用过期的 GPU 状态；明明可以自主推进，却频繁停下来等待用户确认。
+两端都保留经过调研的质量指标、必要交付物、真实依赖阶段、北京时间 `+08:00` 截止时间、资源快照、重试与历史保护。遵循第一性原理和最小充分原则：额外报告、SHA、复现材料和消融只在任务确有需要时要求。
 
-ProgressTarget 将普通计划升级为可执行契约：
-
-- **会话级持久化**：每个会话维护独立计划。
-- **第一性原理与最小充分**：如无必要，不增阶段、指标、交付物、证据或审计；每项都必须影响决策、最终质量/可用性、安全或真实下游需求。
-- **语义化阶段**：按真实依赖拆分，而不是机械四等分。
-- **质量与交付物双门控**：指标达标和产物可用分别判断。
-- **阶段质量关联最终目标**：v2 每阶段必须说明该阶段质量如何保护、提升或验证最终目标。
-- **先调研、后选指标**：比较候选代理指标，记录可追溯来源、测量方法、局限性和阈值依据。
-- **诚实表达不确定性**：无法预估贡献幅度时保留 `null`，只采用最终目标确实需要的最小验证，禁止编造精确收益或默认追加实验。
-- **北京时间统一**：所有时间以明确的 `+08:00` 偏移存储，并强制按 Asia/Shanghai 显示，不受 Host 或浏览器本地时区影响。
-- **截止时间语义**：`completed` 表示按时达标；`overdue` 表示逾期但交付物仍可使用。
-- **证据优先**：必需交付物必须具备验收标准和证据。
-- **动态资源发现**：阶段启动、转换和重规划时刷新全部已配置资源。
-- **全可用服务器分片**：可分片的推理、评估和数据任务必须覆盖所有可用服务器。
-- **可审计重试**：记录结果摘要、诊断结论和下一轮调整。
-- **不设 continuation 轮数上限**：未超过截止时间且仍有可执行调整方案时，必须继续调研和重试；尝试次数或自动续跑预算不能成为停止理由。
-- **递归重新估时**：未完成时重新安排 50%/100% 检查点，而不是高频轮询。
-- **进度可视化**：在 DSH Web 中查看阶段、指标、交付物、重试、截止时间和资源快照。
-
-## 执行模型
+## 仓库结构
 
 ```text
-制定计划 → 发现资源 → 启动阶段
-  ↓
-5分钟 / 50% / 75% 检查 → 100%结果收获
-  ↓
-质量门 + 交付物门 + 截止时间门
-  ├─ 按时全部通过 → completed → 刷新资源 → 下一阶段
-  ├─ 质量未达标、交付物可用且已超时 → overdue → 刷新资源 → 下一阶段
-  └─ 交付物缺失 → 保持 in-progress → 诊断 → 重规划 → 重试
+ProgressTarget/
+├── README.md           # 英文主页
+├── README.zh-CN.md     # 中文主页
+├── LICENSE
+├── dsh/                # DSH 插件、文档与测试
+└── codex/              # Codex 插件、看板、文档与测试
 ```
 
-## 安装
+两端属于同一个项目，共享设计原则，分别维护宿主适配、版本、依赖和运行数据。安装其中一个，不会同时安装另一个。
 
-本仓库是一个 DSH Profile Bundle。请将它加入承载 Web GUI 的实际 Profile；Profile 名称由部署决定：
+## 安装 DSH 版
 
-```powershell
-dsh plugin --profile <你的-profile> add <ProgressTarget-本地路径>
+克隆仓库，把 **`dsh` 子目录** 加入承载 DSH Web 界面的实际 Profile：
+
+```sh
+git clone https://github.com/02TJS/ProgressTarget.git
+cd ProgressTarget
+dsh plugin --profile <你的-profile> add ./dsh
 ```
 
-安装后重启原有 DSH Web Host。不要另起一个替代 Vite 服务，因为 Web 启动状态由正在运行的 DSH Host 注入。
+然后重启原有 DSH Web Host。仓库根目录不再是 DSH Profile Bundle。详细说明见 [DSH 指南](dsh/GUIDE.zh-CN.md)和[配置说明](dsh/CONFIGURATION.md)。
 
-开发时，可以将仓库复制或链接到用户自有的 DSH 插件目录，再加入相应 Profile，并按当前 DSH 版本要求重新构建或重启受影响的 Web 产物。
+## 安装 Codex 版
 
-## 快速开始
+需要 Node.js 22 或更新版本，以及支持 `codex plugin` 命令的 Codex CLI。在克隆的仓库中运行：
 
-安装后，让 Agent 先阅读 [`GUIDE.zh-CN.md`](GUIDE.zh-CN.md)，然后在执行任务时调用 `update-progress-target`：
+```sh
+cd codex
+npm ci
+npm run build
+codex plugin marketplace add .
+codex plugin add progress-target@progress-target
+```
+
+Windows 下也可直接双击 `codex/安装插件.cmd`：缺少运行包时会先构建，再安装本地插件。安装后在新的 Codex 任务中加载工具和技能。
+
+插件市场放在 `codex/.agents/`，注册市场时应进入 `codex/`，不要把整个仓库根目录当作 Codex 市场。路径配置由安装脚本按实际位置生成；移动目录后重新运行安装入口。
+
+## 制定、执行与查看计划
+
+在 Codex 中说：
 
 ```text
-请执行 [XXX任务]。开始前先完整阅读本仓库的 GUIDE.zh-CN.md，并使用 update-progress-target 为当前会话建立独立计划。按真实依赖拆分语义阶段；每阶段必须设置 deadlineAt、结构化质量硬目标、可供下一阶段消费的必需交付物及验收证据、executionPlan 和资源分支。建立计划、启动阶段、阶段转换和重规划时，都要重新查询全部配置资源的实时状态，不能复用旧快照。除非缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞，否则持续推进到完整计划结束。
+请使用已安装的 progress-target:progress-target 技能，为【任务】制定当前对话自己的计划。
+先阅读技能的 SKILL.md，再按其中的相对链接完整阅读 GUIDE.md。
+实际调用插件保存计划，全部阶段保持 pending，整体 executionState 保持 paused，暂不执行。
+完成后返回本对话的看板链接。
 ```
 
-完整提示词位于 [`PROMPT.zh-CN.md`](PROMPT.zh-CN.md)。
+确认计划后说“按当前 ProgressTarget 计划开始执行”，查看时说“打开当前对话的 ProgressTarget 看板”。制定与执行在同一对话完成；新对话和分叉对话有独立的空计划范围。完整提示词分别见 [Codex 使用流程](codex/docs/usage.md)和 [DSH 提示词](dsh/PROMPT.zh-CN.md)。
 
-## 使用前配置自己的部署
+Codex 看板是本地只读网页。可选的 SessionStart、Stop、Interrupt Hook 需要宿主信任，安装本身不代表自动生效；信任后的真实宿主事件仍需验证。两个版本都不提供独立实验执行器或后台调度器。具体差异见[功能对照与限制](codex/docs/feature-audit.md)。
 
-ProgressTarget **没有通用服务器清单**。服务器名称、资源查询方式、质量阈值、交付物规则、存储位置、截止时间、权限与资源限制，都必须由使用者根据自己的环境配置。
+## 开发与维护
 
-在 `cordis.patch.yml` 中修改：
+DSH 在 `dsh/` 执行 `npm test`；Codex 在 `codex/` 执行 `npm ci`、`npm run build`、`npm test`。各自目录包含开发、配置和打包说明。运行计划、本机路径配置、依赖和本地验证输出不提交到 Git，也不放入公开分发包。
 
-```yaml
-config:
-  requiredServers:
-    - gpu-a
-    - gpu-b
-  resourceDiscoveryMaxAgeMinutes: 10
-  dataDir: .progress-target
-```
-
-| 配置 | 默认值 | 含义 |
-|---|---:|---|
-| `requiredServers` | `[]` | 每份资源快照必须覆盖的固定服务器或资源池清单 |
-| `resourceDiscoveryMaxAgeMinutes` | `10` | 阶段启动或重规划时允许的最大快照年龄 |
-| `dataDir` | `.progress-target` | 相对于 `DSH_CWD` 或 Host 工作目录的存储目录 |
-
-`requiredServers: []` 表示不强制固定服务器清单，适用于 CPU-only、云端自动扩缩容、调度器资源池或动态发现环境。如果配置了清单，每份快照必须覆盖所有名称；同时仍允许记录额外发现的资源。
-
-生产使用前，请完整阅读[配置与部署审计清单](CONFIGURATION.md)。ProgressTarget 只校验 Agent 提交的状态和证据；它不会自动提供 SSH、调度器、凭据、GPU、计时器或后台作业能力。
-
-## 状态语义
-
-| 状态 | 含义 |
-|---|---|
-| `pending` | 已规划但尚未启动 |
-| `in-progress` | 正在执行，可包含重试和重新估时 |
-| `completed` | 截止时间前通过质量门和交付物门 |
-| `overdue` | 已超过截止时间，质量可未达标，但必需交付物可用 |
-
-必需交付物缺失时，即使超时也不能启动下游阶段。默认保护全部历史；用户明确授权后，可用 `delete-phase` 删除任意状态阶段，或用 `delete-plan` 永久删除当前会话整份计划。删除必须提供 `userAuthorizedDeletion=true` 和非空理由，不得自行推定授权。阶段删除会写入 `deletionAudit`。
-
-## 存储
-
-计划按会话保存到：
-
-```text
-<DSH_CWD>/<dataDir>/<sessionId>.json
-```
-
-默认 `dataDir` 为 `.progress-target`。不要提交运行态计划文件；仓库的 `.gitignore` 已排除默认目录。
-
-## 安全与隐私
-
-- 发布截图或计划 JSON 前，先检查资源查询证据。
-- 不要在 evidence 字段写入 Token、密码、私钥、内部用户名或机密数据路径。
-- 集群凭据应由部署自身的秘密管理系统维护。
-- 使用前明确计划文件的保留、备份以及授权修改策略。
-
-## v2 质量贡献契约
-
-新计划使用 `schemaVersion: 2`，首先定义结构化 `finalObjective`，包括最终指标和最终交付物。每个阶段随后必须提供：
-
-- `metricResearch`：调研问题、可追溯来源、候选指标、已选指标及选择理由；
-- `objectiveContribution`：关联的最终指标、影响机制、证据等级、不确定性、未达标风险和验证方案；
-- 指标元数据：`kind`、测量方法、局限性和阈值依据。
-
-v2 阶段不能只用“任务完成”“文件生成”等过程指标通过门控，至少需要一个经过调研的 `quality` 或 `final` 指标，用于保护、提升或验证最终目标。插件会拒绝 `数量 > 0`、`文件数 > 0` 等只证明“存在”的空洞阈值，也会拒绝全部质量指标都只是 `> 0` 或 `>= 0` 的阶段。`adaptive` 阈值仅用于探索，必须在充分调研或测量后冻结为具有证据依据的正式阈值，才能进入正式阶段。若暂时无法估算影响幅度，应将 `impactEstimate` 设为 `null`，明确不确定性，并只采用最终目标所需的最小验证；不能编造数值，也不默认要求 pilot、消融或复现材料。
-
-## 初始化、兼容与迁移
-
-Tool 新增顶层 `phases` 数组。`operation="init-plan"` 实际读取 `phases`，只创建 `pending` 阶段，且初始化不需要 `phase_id`；初始化时不要传顶层 `timeline` 字符串，因为实现不会保存它。`phases[].timeline` 仍是各单阶段的人类可读时间字符串；在 `operation="update-phase"` 中，顶层 `timeline` 也只表示正在更新的单阶段时间字符串。另行说明：HTTP API 为兼容旧调用仍接受顶层 `timeline` 对象数组；落盘格式始终是 `schemaVersion: 2`，阶段存放在 `timeline` 对象数组中。
-
-初始化只允许创建全新计划。只要已有任何计划文件，包括历史上 `timeline` 为空数组的文件，初始化都必须明确失败并原样保留该文件；不再拼接终态阶段，也不再静默按 v1 初始化。已有计划（包括旧计划）的阶段更新统一使用 `operation="update-phase"`。
-
-迁移必须显式、完整且原子化。调用 `operation="migrate-plan"` 时，必须设置 `userAuthorizedMigration=true`、填写非空迁移原因，并提供完整 `finalObjective` 和 `phases`；`phases` 的数量、顺序和 ID 必须与原计划完全一致。迁移只补充 `metricResearch`、`objectiveContribution` 和 metrics 元数据，同时保留原指标数值以及其他全部字段、状态和时间。调用后必须重新读取存储文件，复查 `schemaVersion`、阶段数量和顺序 ID；不能仅凭成功卡片宣称迁移完成。任何验证失败都保留原文件。若需删除旧计划，必须由用户明确授权 `delete-plan`，同时提供 `userAuthorizedDeletion=true` 和理由。详见 [v2质量贡献契约和迁移示例](V2-CONTRACT.zh-CN.md)。
-
-## 文档
-
-- [v2质量贡献契约](V2-CONTRACT.zh-CN.md)
-- [配置与部署审计清单](CONFIGURATION.md)
-- [完整中文使用指南](GUIDE.zh-CN.md)
-- [生产提示词模板](PROMPT.zh-CN.md)
-- [变更记录](CHANGELOG.md)
-- [贡献指南](CONTRIBUTING.md)
-
-## 许可证
-
-MIT，参见 [LICENSE](LICENSE)。
+MIT © 2026 02TJS，见 [LICENSE](LICENSE)。Codex 打包依赖的许可见[第三方声明](codex/plugins/progress-target/THIRD-PARTY-NOTICES.md)。

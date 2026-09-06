@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ProgressTarget · 进度目标</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark">p<span>t</span></span><span>ProgressTarget<small>任务进度与验收</small></span></a>
+    <div class="workspace-label"><span class="workspace-icon">⌘</span> 本地工作区 <span class="version">v0.1</span></div>
+    <label class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索任务…" aria-label="搜索任务"></label>
+    <div class="list-heading">我的任务 <span id="plan-count">0</span></div>
+    <nav id="plan-list" aria-label="任务列表"></nav>
+    <div class="sidebar-bottom"><span class="connection-dot" id="connection-dot"></span><span id="connection">正在连接</span><small>只读看板 · 数据保存在本机</small></div>
+  </aside>
+  <main>
+    <header class="topbar"><span>工作区 <span class="slash">/</span> 进度目标</span><div><span id="updated-at" class="muted"></span><button id="refresh" class="button quiet">↻ 刷新</button></div></header>
+    <div id="error" class="error" role="alert" hidden></div>
+    <div id="app"><div class="loading">正在读取计划…</div></div>
+    <footer>ProgressTarget for Codex <span>·</span> 阶段有进展，结果有依据。</footer>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

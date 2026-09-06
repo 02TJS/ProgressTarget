@@ -5,11 +5,12 @@ Contributions are welcome.
 1. Fork the repository and create a focused branch.
 2. Keep Host and Client lifecycle effects reversible.
 3. Do not commit runtime `.progress-target` data, credentials, or private cluster evidence.
-4. Run syntax checks before opening a pull request:
+4. Run checks from the `dsh/` directory before opening a pull request:
 
 ```powershell
 node --check index.js
 node --check client.js
+npm test
 ```
 
 5. Explain state-schema or migration changes in the pull request.

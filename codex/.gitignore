@@ -1,0 +1,12 @@
+node_modules/
+.cache/
+/runtime/*
+!/runtime/.gitkeep
+/qa/
+/dist/
+/plugins/progress-target/dist/
+/plugins/progress-target/local-config.json
+/plugins/progress-target/.mcp.json
+/plugins/progress-target/hooks/hooks.json
+*.tmp
+__pycache__/

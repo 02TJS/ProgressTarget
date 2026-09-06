@@ -1,0 +1,26 @@
+{
+  "name": "progress-target-codex-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "start": "node plugins/progress-target/server/dashboard-main.js",
+    "demo": "node scripts/seed-demo.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.62.1"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

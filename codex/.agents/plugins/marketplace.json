@@ -1,0 +1,20 @@
+{
+  "name": "progress-target",
+  "interface": {
+    "displayName": "Progress Target"
+  },
+  "plugins": [
+    {
+      "name": "progress-target",
+      "source": {
+        "source": "local",
+        "path": "./plugins/progress-target"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
