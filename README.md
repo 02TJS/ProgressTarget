@@ -20,7 +20,7 @@ ProgressTarget turns a plan into an enforceable execution contract:
 - **Two hard gates** — quality targets and usable deliverables are evaluated separately.
 - **Goal-linked phase quality** — each v2 phase explains how its quality protects or validates the final objective.
 - **Research before metrics** — compare candidate proxies, cite sources, define measurement and limitations, and justify thresholds before execution.
-- **Honest uncertainty** — unknown impact magnitude stays `null` and is resolved through pilot, ablation, or controlled validation rather than fabricated precision.
+- **Honest uncertainty** — unknown impact magnitude stays `null`; choose only the least costly validation that the final objective actually requires instead of fabricating precision or defaulting to extra experiments.
 - **Beijing-time deadlines** — every timestamp is stored with the explicit `+08:00` offset and displayed in Asia/Shanghai, independent of Host or browser timezone.
 - **Deadline-aware outcomes** — `completed` means passed on time; `overdue` means late but still usable.
 - **Evidence-first delivery** — required artifacts need acceptance criteria and evidence.
@@ -120,13 +120,15 @@ New plans use `schemaVersion: 2` and must define a structured `finalObjective` w
 - `objectiveContribution`: linked final metric keys, causal mechanism, evidence level, uncertainty, risk if missed, and a validation plan;
 - metric metadata: `kind`, measurement method, limitations, and threshold provenance.
 
-A v2 phase cannot pass with process-only metrics such as “job finished” or “file created.” At least one researched `quality` or `final` metric must protect, improve, or validate the final objective. Vacuous existence thresholds such as `count > 0`, `files > 0`, or a set of quality metrics that are all merely `> 0`/`>= 0` are rejected. An `adaptive` threshold is exploratory only and must be frozen to a justified formal threshold after research or a pilot before the production phase can proceed. If the impact magnitude cannot yet be estimated, `impactEstimate` should be `null`; the phase must state uncertainty and schedule a pilot, ablation, or controlled validation instead of inventing a number.
+A v2 phase cannot pass with process-only metrics such as “job finished” or “file created.” At least one researched `quality` or `final` metric must protect, improve, or validate the final objective. Vacuous existence thresholds such as `count > 0`, `files > 0`, or a set of quality metrics that are all merely `> 0`/`>= 0` are rejected. An `adaptive` threshold is exploratory only and must be frozen to a justified formal threshold after sufficient research or measurement before the production phase can proceed. If the impact magnitude cannot yet be estimated, `impactEstimate` should be `null`; the phase must state uncertainty and use only the minimum validation needed by the final objective instead of inventing a number or requiring a pilot, ablation, or reproduction package by default.
 
-## Contract compatibility and migration
+## Initialization, compatibility, and migration
 
-Existing plans without `schemaVersion` continue under the v1 rules and are never silently rewritten. They can still update progress, finish phases, and advance under their original contract.
+The Tool now accepts a top-level `phases` array. `operation="init-plan"` reads `phases`, creates every phase as `pending`, and does not require `phase_id`; do not send a top-level `timeline` string during initialization because it is not persisted. Each `phases[].timeline` remains the human-readable time string for that single phase. For `operation="update-phase"`, the top-level `timeline` field is likewise the human-readable string for the one phase being updated. Separately, the HTTP endpoint still accepts the legacy top-level `timeline` object array for transport compatibility. Persisted v2 files always use `schemaVersion: 2` and store phases in the `timeline` object array.
 
-Migration is explicit and transactional. `operation="migrate-plan"` requires `userAuthorizedMigration=true`, a reason, a complete final objective, and v2 contracts for every existing phase. Migration cannot add or remove phases or rewrite existing statuses and completion times. If any validation fails, the stored v1 plan remains unchanged. See the [full v2 contract and migration example](V2-CONTRACT.zh-CN.md).
+Initialization is create-only. If any plan file already exists—even a historical file with an empty `timeline`—initialization fails explicitly and leaves that file unchanged. There is no terminal-phase concatenation and no silent v1 fallback. Existing plans, including legacy plans, remain editable through `operation="update-phase"`.
+
+Migration is explicit and transactional. `operation="migrate-plan"` requires `userAuthorizedMigration=true`, a non-empty reason, a complete `finalObjective`, and a `phases` array matching the existing phase count, order, and IDs. Migration only adds `metricResearch`, `objectiveContribution`, and metric metadata while preserving every original metric value and all other fields, statuses, and timestamps. After the call, re-read the stored plan and verify `schemaVersion`, phase count, and ordered IDs; a successful Tool card alone is not proof of completion. If validation fails, the original file remains unchanged. Deleting an old plan requires an explicit `delete-plan` authorization with `userAuthorizedDeletion=true` and a reason. See the [full v2 contract and migration example](V2-CONTRACT.zh-CN.md).
 
 ## Documentation
 

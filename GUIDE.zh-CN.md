@@ -1,4 +1,4 @@
-﻿# dsh-progress-target 插件使用说明
+# dsh-progress-target 插件使用说明
 
 ## 1. 用途
 
@@ -282,57 +282,59 @@ update-progress-target({
 
 ## 5. 计划初始化
 
-HTTP API 可一次初始化完整计划：
+推荐直接按 [`V2-CONTRACT.zh-CN.md`](V2-CONTRACT.zh-CN.md) 中的完整 v2 示例调用 Tool，避免复制已经失效的 v1 初始化结构。核心形态如下：
 
-```http
-POST /api/progress-target?sessionId=<sessionId>
-Content-Type: application/json
-```
-
-```json
-{
-  "_initPlan": true,
-  "introduction": "全量推荐实验；预计2小时；巡检点5min→60min→90min→120min",
-  "timeline": [
+```javascript
+update-progress-target({
+  operation: "init-plan",
+  introduction: "先验证数据质量，再训练并完成最终评估",
+  finalObjective: {
+    description: "得到满足排序效果和部署验收要求的模型",
+    metrics: [{key:"NDCG@10", operator:">=", targetValue:0.25, unit:""}],
+    deliverables: [{name:"production-model", acceptance:"权重可加载且通过最终部署验收"}]
+  },
+  phases: [
     {
-      "id": "data-prep",
-      "pLabel": "P1",
-      "actionTitle": "数据准备",
-      "timeline": "预计20分钟",
-      "what": "清洗并划分全量数据",
-      "purpose": "获得满足训练消费要求的输入",
-      "deadlineAt": "2026-08-26T09:20:00+08:00",
-      "status": "pending",
-      "progress": 0,
-      "executionPlan": {
-        "estimatedMinutes": 20,
-        "parallelizable": true,
-        "serialReason": "",
-        "resources": [
-          {"id":"cpu-clean","work":"清洗数据","resource":"CPU后台作业A","expectedDeliverable":"清洗数据集","status":"planned"},
-          {"id":"cpu-schema","work":"校验任务所需schema和数据可用性","resource":"CPU后台作业B","expectedDeliverable":"dataset manifest","status":"planned"}
-        ]
+      id: "data-quality",
+      actionTitle: "验证数据质量",
+      timeline: "预计20分钟",
+      what: "调研风险、选择质量代理指标并测量",
+      purpose: "控制会限制最终NDCG的标签噪声",
+      deadlineAt: "2026-08-27T12:00:00+08:00",
+      status: "pending",
+      metricResearch: {
+        questions: ["哪些数据问题会限制最终排序效果？"],
+        sources: [{title:"数据审计报告", location:"docs/data-audit.md", finding:"标签冲突是主要风险"}],
+        candidateMetrics: [{key:"标签冲突率", rationale:"衡量监督信号矛盾", measurement:"冲突标签数/复核标签总数", limitations:"不能识别一致但系统性错误"}],
+        selectedMetrics: ["标签冲突率"],
+        selectionReason: "可在训练前测量并覆盖主要风险"
       },
-      "metrics": [
-        {"key":"数据覆盖率","value":0,"operator":">=","targetValue":100,"unit":"%"}
-      ],
-      "deliverables": [
-        {"name":"dataset-manifest","required":true,"acceptance":"含任务需要的样本统计和字段schema","status":"pending","evidence":""}
-      ],
-      "result": "规划完成，数据覆盖率初始值=0%"
+      objectiveContribution: {
+        finalObjectiveKeys: ["NDCG@10"],
+        mechanism: "标签冲突降低监督信号质量并限制排序效果",
+        evidenceLevel: "literature-supported",
+        impactEstimate: null,
+        uncertainty: "当前数据集缺少贡献幅度估计",
+        validationPlan: "在训练评估中按标签冲突分层比较NDCG，复用既定评估产物验证影响",
+        riskIfMissed: "模型可能在噪声监督下收敛到较差结果"
+      },
+      metrics: [{key:"标签冲突率", value:0.02, operator:"<=", targetValue:0.01, unit:"", kind:"quality", measurement:"冲突标签数/复核标签总数", limitations:"不能识别系统性一致偏差", thresholdBasis:{type:"requirement", evidence:"数据验收要求：复核样本标签冲突率不高于1%", reason:"该上限直接约束训练输入质量"}}],
+      deliverables: [{name:"clean-data", required:true, acceptance:"数据可加载且质量指标达标", status:"pending", evidence:""}],
+      executionPlan: {estimatedMinutes:20, parallelizable:false, shardable:false, shardReason:"小规模审计需统一抽样", serialReason:"需在统一样本上顺序复核", resourceDiscovery:{queriedAt:"2026-08-27T10:00:00+08:00", servers:[]}, resources:[{id:"audit", work:"数据审计", resource:"CPU", expectedDeliverable:"质量报告", status:"planned"}]}
     }
   ]
-}
+})
 ```
 
-初始化时每个阶段必须包含：
+初始化实际读取新增的 `phases` 数组，且不需要顶层 `phase_id`。初始化时不要传顶层 `timeline` 字符串，因为实现不会保存该文本；每个 `phases[].timeline` 才是对应单阶段的人类可读时间字符串。初始化只创建 `pending` 阶段：即使输入其他状态，也不能用初始化直接启动或完成阶段。后续使用 `operation="update-phase"` 时，Tool 的顶层 `timeline` 也只表示正在更新的单阶段时间字符串。
 
-- 语义化 `id`；
-- `actionTitle`、`what`、`purpose`；
-- `deadlineAt`；
-- `executionPlan`，包括预计耗时、并行判断与资源分支；
-- 至少一个结构化质量硬目标 `metrics`；
-- 至少一个必需交付物 `deliverables`，并写明验收条件。
+HTTP 兼容规则单独处理：旧客户端仍可把阶段对象数组放在顶层 `timeline`，但这只是传输兼容入口；持久化文件始终使用 `schemaVersion: 2`，阶段存储在 `timeline` 对象数组。新 Tool 调用应使用 `phases`，不要把 HTTP 兼容格式当作推荐格式。
+
+初始化时每个阶段必须满足完整 v2 契约：语义化 `id`、`actionTitle`、`what`、`purpose`、`deadlineAt`、`metricResearch`、`objectiveContribution`、带元数据的质量 `metrics`、必需 `deliverables` 和完整 `executionPlan`。
+
+初始化是“仅创建”操作。当前会话只要已经存在任何计划文件，包括历史上 `timeline: []` 的空计划记录，都必须明确失败并原样保留文件；插件不再拼接旧终态阶段，也不再静默创建或沿用 v1。已有计划的阶段更新使用 `operation="update-phase"`；若确需删掉旧计划重建，必须先取得用户当前请求中的明确授权，再调用 `operation="delete-plan"`，并提供 `userAuthorizedDeletion=true` 与非空 `deletionReason`。
+
+Tool 返回成功后必须重新读取计划，至少复查 `schemaVersion === 2`、阶段数量与提交的 `phases.length` 一致、阶段 ID 顺序逐项一致。不能只凭成功卡片宣称初始化完成。
 
 ## 6. 留存与状态规则
 
@@ -344,7 +346,7 @@ Content-Type: application/json
 | 超时但交付物缺失 | 继续 `in-progress`，重估新 `deadlineAt`，不得启动下一阶段 |
 | `completed/overdue → 其他状态` | 禁止，除非用户明确授权 |
 
-已经结束的阶段不得被重新初始化、清空、覆盖或回退。再次初始化计划时，插件会忽略同 ID 的终态输入，并自动把缺失的 `completed`/`overdue` 阶段追加回计划，完整保留其原始记录。
+已经结束的阶段不得被重新初始化、清空、覆盖或回退。已有任何计划文件时，`init-plan` 会明确失败并保持原文件不变，不做终态拼接或任何静默兼容处理。更新已有阶段必须使用 `operation="update-phase"`。
 
 ### 6.1 用户授权删除
 
@@ -360,7 +362,21 @@ Content-Type: application/json
 
 两个操作都必须同时提供 `userAuthorizedDeletion=true` 和非空 `deletionReason`，Agent 不得从历史对话或模糊表述推定授权。`delete-phase` 支持 pending、in-progress、completed、overdue，并在计划的 `deletionAudit` 中记录北京时间、阶段ID和理由。`delete-plan` 永久删除当前会话的计划文件，使UI恢复“未制定目标计划表”；由于整份文件已删除，其审计理由只存在于本次工具调用记录中。
 
-### 6.2 用户授权的终态审计补录
+### 6.2 显式 v1→v2 迁移
+
+旧计划仍通过 `operation="update-phase"` 更新，不会因读取或普通更新而静默变成 v2。迁移必须由用户明确授权，并同时提供：
+
+- `operation="migrate-plan"`；
+- `userAuthorizedMigration=true`；
+- 非空 `migrationReason`；
+- 完整 `finalObjective`；
+- 与原计划阶段数量、顺序和 ID 完全一致的 `phases`。
+
+迁移不是重建计划。每个迁移阶段只能补充 `metricResearch`、`objectiveContribution`，以及原有 `metrics` 对应项的 `kind`、`measurement`、`limitations`、`thresholdBasis` 元数据；原指标的 `key`、`value`、`operator`、`targetValue`、`unit` 必须保留，其他字段、状态和时间也不得改变。任何数量、顺序、ID、原指标数值或受保护字段不一致都应使迁移整体失败，并保留原文件。
+
+迁移返回后必须重新读取计划并核对 `schemaVersion`、阶段数量和顺序 ID，必要时逐项核对原指标数值；成功卡片本身不能作为迁移完成证据。
+
+### 6.3 用户授权的终态审计补录
 
 旧终态阶段缺少新格式审计字段时，用户可以明确授权补录。调用时设置：
 
@@ -381,7 +397,7 @@ Content-Type: application/json
 
 审计补录只能填充原本为空的 `createdAt/startedAt/deadlineAt/completedAt/executionPlan/deliverables/metrics`，不能覆盖已有字段、状态或结果。每次补录都会记录 `auditSupplements[]`，包含时间、字段列表和授权原因。
 
-### 6.2 逾期合法交付后的自动推进
+### 6.4 逾期合法交付后的自动推进
 
 当阶段已经超过 `deadlineAt`、质量门未通过，但所有必需交付物均 `ready` 且有证据时：
 

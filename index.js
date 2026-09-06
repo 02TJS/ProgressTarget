@@ -1,6 +1,6 @@
-﻿import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve } from 'node:path'
 
 export const inject = ['webServer', 'tools', 'agents']
 
@@ -76,26 +76,31 @@ function normalizeConfig(value) {
 }
 
 function getBaseDir(settings) {
-  return join(process.env.DSH_CWD || process.cwd(), settings.dataDir)
+  return resolve(process.env.DSH_CWD || process.cwd(), settings.dataDir)
 }
 
 function getDataPath(sessionId, settings) {
+  if (typeof sessionId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(sessionId)) throw new Error('无效 sessionId')
   return join(getBaseDir(settings), sessionId + '.json')
 }
 
 async function loadPlan(sessionId, settings) {
   const path = getDataPath(sessionId, settings)
   try {
-    if (existsSync(path)) return JSON.parse(await readFile(path, 'utf-8'))
-  } catch (e) { /* fall through */ }
-  return null
+    const plan = JSON.parse(await readFile(path, 'utf-8'))
+    if (!plan || !Array.isArray(plan.timeline)) throw new Error('计划文件格式损坏，拒绝覆盖')
+    return plan
+  } catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw error
+  }
 }
 
-async function savePlan(sessionId, plan, settings) {
+async function savePlan(sessionId, plan, settings, exclusive = false) {
   const path = getDataPath(sessionId, settings)
   const dir = dirname(path)
   if (!existsSync(dir)) await mkdir(dir, { recursive: true })
-  await writeFile(path, JSON.stringify(plan, null, 2), 'utf-8')
+  await writeFile(path, JSON.stringify(plan, null, 2), { encoding: 'utf-8', flag: exclusive ? 'wx' : 'w' })
 }
 
 async function deletePlan(sessionId, settings) {
@@ -391,7 +396,10 @@ function preparePhaseUpdate(item, src, at, settings, options = {}) {
   if (!next.createdAt) next.createdAt = at
 
   for (const key of ['pLabel', 'actionTitle', 'timeline', 'what', 'purpose', 'result']) {
-    if (src[key] !== undefined) next[key] = String(src[key])
+    if (src[key] !== undefined) {
+      if (typeof src[key] !== 'string') throw new Error(key + ' 必须是文本，不能提交数组或对象')
+      next[key] = src[key]
+    }
   }
 
   const startedAt = optionalIso(src.startedAt, 'startedAt')
@@ -521,6 +529,84 @@ function validateInitPhase(src, index, at, settings, options = {}) {
   return next
 }
 
+function planOperation(args) {
+  const operation = args.operation || (args._initPlan ? 'init-plan' : 'update-phase')
+  if (!['init-plan', 'update-phase', 'migrate-plan', 'delete-phase', 'delete-plan'].includes(operation)) throw new Error('未知 operation：' + operation)
+  if (args._initPlan && operation !== 'init-plan') throw new Error('_initPlan 与 operation 冲突')
+  return operation
+}
+
+function phaseInputs(args) {
+  if (args.phases !== undefined && Array.isArray(args.timeline)) throw new Error('请只提交 phases，不要同时提交旧 timeline 数组')
+  const phases = args.phases !== undefined ? args.phases : args.timeline
+  if (!Array.isArray(phases) || !phases.length) throw new Error('完整计划必须包含非空 phases 数组；timeline 字符串只用于单阶段时间说明')
+  const ids = phases.map((phase, index) => {
+    if (!phase || typeof phase !== 'object' || Array.isArray(phase)) throw new Error('phases[' + index + '] 必须是对象')
+    const id = requiredText(phase.id, 'phases[' + index + '].id')
+    if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(id)) throw new Error('阶段ID必须是英文短横线标识：' + id)
+    return id
+  })
+  if (new Set(ids).size !== ids.length) throw new Error('phases.id 不得重复')
+  return phases
+}
+
+function validateV2PhaseContract(phase, finalObjective) {
+  phase.metricResearch = normalizeMetricResearch(phase.metricResearch)
+  phase.objectiveContribution = normalizeObjectiveContribution(phase.objectiveContribution, finalObjective)
+  phase.metrics = phase.metrics.map(metric => normalizeMetric(metric, { v2: true }))
+  const quality = phase.metrics.filter(metric => metric.kind !== 'process')
+  if (!quality.length) throw new Error(phase.id + ' 至少需要一个 quality/final 指标')
+  if (quality.every(metric => metric.targetValue === 0 && ['>', '>='].includes(metric.operator))) throw new Error(phase.id + ' 质量目标不能全部是 >0/≥0')
+  if (quality.some(metric => !phase.metricResearch.selectedMetrics.includes(metric.key))) throw new Error(phase.id + ' 的质量指标必须来自 selectedMetrics')
+  if (!phase.deliverables.some(item => item.required !== false)) throw new Error(phase.id + ' 至少需要一个必需交付物')
+  return phase
+}
+
+// Both the model Tool and HTTP API use this path. Validation completes before any write.
+async function saveFullPlan(sessionId, args, settings, at, operation) {
+  const existing = await loadPlan(sessionId, settings)
+  const inputs = phaseInputs(args)
+  const finalObjective = normalizeFinalObjective(args.finalObjective)
+  let plan
+  if (operation === 'init-plan') {
+    if (existing !== null) throw new Error('当前会话已有计划；init-plan 不覆盖或自动降级。请更新旧阶段、明确授权迁移，或明确授权删除旧计划后重新初始化')
+    const timeline = inputs.map((src, index) => {
+      if (src.status !== undefined && src.status !== 'pending') throw new Error('init-plan 仅创建 pending 阶段；启动请另用 update-phase')
+      if (src.startedAt || src.completedAt) throw new Error('初始化 pending 阶段不得提交开始/完成时间')
+      return validateV2PhaseContract(validateInitPhase({ ...src, status: 'pending' }, index, at, settings, { schemaVersion: 2, finalObjective }), finalObjective)
+    })
+    plan = { schemaVersion: 2, createdAt: at, introduction: requiredText(args.introduction, 'introduction'), finalObjective, timeline }
+  } else {
+    if (args.userAuthorizedMigration !== true) throw new Error('迁移v2必须由用户明确授权 userAuthorizedMigration=true')
+    const reason = requiredText(args.migrationReason, 'migrationReason')
+    if (!existing || (existing.schemaVersion || 1) !== 1) throw new Error('只能迁移既有v1计划')
+    if (inputs.length !== existing.timeline.length || inputs.some((src, i) => src.id !== existing.timeline[i].id)) throw new Error('迁移必须保留所有阶段ID、数量和顺序')
+    const timeline = existing.timeline.map((old, i) => {
+      const src = inputs[i]
+      // Migration adds contracts only; it does not replay lifecycle transitions or timestamps.
+      const next = clone(old)
+      for (const key of Object.keys(src)) {
+        if (!['id', 'metrics', 'metricResearch', 'objectiveContribution'].includes(key) && JSON.stringify(src[key]) !== JSON.stringify(old[key])) throw new Error('迁移不得覆盖既有字段：' + old.id + '.' + key)
+      }
+      if (!Array.isArray(src.metrics) || src.metrics.length !== old.metrics.length) throw new Error('迁移必须保留原有指标及数值')
+      for (let j = 0; j < old.metrics.length; j++) {
+        for (const key of ['key', 'value', 'operator', 'targetValue']) {
+          if (src.metrics[j][key] !== old.metrics[j][key]) throw new Error('迁移不得改变既有指标：' + old.id + '.' + key)
+        }
+      }
+      if (src.metrics.some((metric, j) => (metric.unit || '') !== (old.metrics[j].unit || ''))) throw new Error('迁移不得改变既有指标单位')
+      next.metrics = src.metrics
+      next.metricResearch = src.metricResearch
+      next.objectiveContribution = src.objectiveContribution
+      return validateV2PhaseContract(next, finalObjective)
+    })
+    plan = { ...clone(existing), schemaVersion: 2, finalObjective, timeline,
+      migrations: [...(existing.migrations || []), { at, from: 1, to: 2, reason }] }
+  }
+  await savePlan(sessionId, plan, settings, operation === 'init-plan')
+  return plan
+}
+
 export function apply(ctx, config = {}) {
   const settings = normalizeConfig(config)
   ctx.effect(() => ctx.webServer.register({
@@ -554,7 +640,14 @@ export function apply(ctx, config = {}) {
             req.on('error', reject)
           })
           const at = nowIso()
+          const operation = planOperation(body)
+          if (operation === 'init-plan' || operation === 'migrate-plan') {
+            sendJson(res, 200, await saveFullPlan(sessionId, body, settings, at, operation))
+            return
+          }
+          if (body.phases !== undefined || Array.isArray(body.timeline)) throw new Error('阶段数组只能用于 init-plan/migrate-plan，不能作为阶段文本保存')
           let plan = await loadPlan(sessionId, settings)
+          if (!plan && operation === 'update-phase') throw new Error('当前会话尚无计划，请先用 init-plan 和 phases 创建v2计划')
           if (!plan) plan = clone(EMPTY_PLAN)
           if (!plan.createdAt) plan.createdAt = at
 
@@ -572,51 +665,8 @@ export function apply(ctx, config = {}) {
             if (index < 0) throw new Error('阶段不存在：' + phaseId)
             plan.timeline.splice(index, 1)
             plan.deletionAudit = [...(Array.isArray(plan.deletionAudit) ? plan.deletionAudit : []), { at, operation: 'delete-phase', phaseId, reason: body.deletionReason }]
-          } else if (body.operation === 'migrate-plan') {
-            if (body.userAuthorizedMigration !== true) throw new Error('迁移v2必须由用户明确授权 userAuthorizedMigration=true')
-            if (!Array.isArray(plan.timeline) || !plan.timeline.length) throw new Error('没有可迁移的既有计划')
-            if ((plan.schemaVersion || 1) !== 1) throw new Error('只有v1计划可以迁移到v2')
-            const finalObjective = normalizeFinalObjective(body.finalObjective)
-            if (!Array.isArray(body.timeline) || body.timeline.length !== plan.timeline.length) throw new Error('迁移必须为全部既有阶段提供完整v2契约，且不得增删阶段')
-            const byId = new Map(body.timeline.map(item => [requiredText(item && item.id, 'timeline.id'), item]))
-            const migrated = plan.timeline.map((oldItem, index) => {
-              const supplement = byId.get(oldItem.id)
-              if (!supplement) throw new Error('迁移缺少阶段 ' + oldItem.id)
-              const merged = { ...clone(oldItem), ...clone(supplement), id: oldItem.id, status: oldItem.status, completedAt: oldItem.completedAt }
-              return validateInitPhase(merged, index, at, settings, { schemaVersion: 2, finalObjective })
-            })
-            plan = {
-              ...plan,
-              schemaVersion: 2,
-              finalObjective,
-              timeline: migrated,
-              migrations: [...(Array.isArray(plan.migrations) ? plan.migrations : []), {
-                at,
-                from: 1,
-                to: 2,
-                reason: requiredText(body.migrationReason, 'migrationReason'),
-              }],
-            }
-          } else if (body._initPlan || body.operation === 'init-plan') {
-            if (!Array.isArray(body.timeline) || !body.timeline.length) throw new Error('初始化计划必须包含非空 timeline')
-            const isExistingPlan = Array.isArray(plan.timeline) && plan.timeline.length > 0
-            const schemaVersion = isExistingPlan ? (plan.schemaVersion || 1) : 2
-            const finalObjective = schemaVersion === 2 ? normalizeFinalObjective(body.finalObjective) : plan.finalObjective
-            const existingTerminal = new Map((plan.timeline || []).filter(item => TERMINAL.has(item.status)).map(item => [item.id, item]))
-            const proposed = body.timeline.map((src, index) => {
-              const id = requiredText(src && src.id, 'timeline[' + index + '].id')
-              if (existingTerminal.has(id)) return clone(existingTerminal.get(id))
-              return validateInitPhase(src, index, at, settings, { schemaVersion, finalObjective })
-            })
-            const proposedIds = new Set(proposed.map(item => item.id))
-            for (const [id, oldItem] of existingTerminal) {
-              if (!proposedIds.has(id)) proposed.push(clone(oldItem))
-            }
-            plan.introduction = requiredText(body.introduction, 'introduction')
-            plan.schemaVersion = schemaVersion
-            if (schemaVersion === 2) plan.finalObjective = finalObjective
-            plan.timeline = proposed
           } else {
+            if (body.introduction !== undefined) plan.introduction = requiredText(body.introduction, 'introduction')
             const phaseId = requiredText(body.phase_id, 'phase_id')
             const index = (plan.timeline || []).findIndex(item => item.id === phaseId)
             const item = index >= 0 ? plan.timeline[index] : makePhase(phaseId, at)
@@ -646,9 +696,9 @@ export function apply(ctx, config = {}) {
     },
   }), 'progress-target: route')
 
-  ctx.tools.register({
+  const toolDefinition = {
     name: 'update-progress-target',
-    description: '更新当前会话某个进程目标阶段。\n\n【第一性原理与最小充分】\n如无必要，不增实体。阶段、指标、交付物、证据、资源分支和审计步骤都必须能改变决策、验证最终质量/可用性、安全边界或满足真实下游需求；否则不得添加。禁止反复进行计划合理性审计，已有充分证据时直接推进。SHA、复现说明、manifest、额外报告、消融等均非默认要求，仅在用户明确要求，或完整性、防篡改、跨环境交付、科学复现确为最终目标必要条件时加入。metricResearch 应充分但有停止条件：足以选出可测指标和有依据阈值后停止调研。\n\n【持续尝试：禁止轮数上限】\n不得为 continuation、重试或调研预设 maxRounds、maxRetries、stopAfterAttempts 等轮数上限。阶段未超过 deadlineAt、质量未达标且仍有可执行 adjustment 时，必须持续调研、调整和重试；轮数、尝试次数、进展缓慢或自动续跑预算不得作为停止理由。只允许因质量与交付物合法结束、用户专属输入、权限/安全确认或有证据的不可解外部阻塞而停止。\n\n【契约版本】\n既有无 schemaVersion 的计划按 v1 兼容执行；新建计划必须使用 v2，先定义 finalObjective。每阶段必须先充分调研候选质量指标，记录来源、测量方法、阈值依据、局限性、影响机制、不确定性与验证方案。无法可靠估计贡献幅度时使用 null，禁止编造。只有过程指标不能完成阶段。\n\n【根本目标】\n以完整完成计划为根本。每阶段规划至少一个必需交付物 deliverable；没有可供下一阶段消费的交付物，阶段即使超时也不能结束，且不得启动后续阶段。\n\n【时间规则】\n所有时间统一使用北京时间 UTC+08:00，并以带 +08:00 偏移的 ISO 8601 字符串存储；不接受无时区、Z或其他偏移。首次创建自动记录 createdAt；首次进入 in-progress 自动记录 startedAt。规划或启动每个阶段时必须设置北京时间 deadlineAt。逾期但交付物缺失时保持 in-progress，填写 attempt 并重估新的 deadlineAt 继续执行。\n\n【双门控】\n质量门 metrics 决定是否达标；交付物门 deliverables 决定能否离开阶段。全部质量目标达标、交付物齐备且未超时才允许 completed。超过 deadlineAt 后，只有必需交付物全部 ready 且有 evidence 时才允许 overdue（质量可不达标）；交付物缺失则不能 overdue。\n硬目标未达标或交付物缺失时必须填写 attempt.summary、attempt.findings、attempt.adjustment，总结本轮结果、调研结论和下一轮调整后继续尝试。\n\n【资源发现与并行加速】\n每次阶段从 pending 进入 in-progress，以及进行中阶段重规划 executionPlan 时，都必须重新查询插件 requiredServers 配置中的全部资源服务器，并在 executionPlan.resourceDiscovery 中记录每台服务器状态、可用GPU数、查询时间和证据。查询快照不得超过配置的 resourceDiscoveryMaxAgeMinutes；阶段切换时 queriedAt 必须晚于上一阶段 completedAt，且不得复用本阶段旧快照。插件会保留 resourceDiscoveryHistory。不得锁定第一台GPU后停止查询。推理、评估、数据处理等可分片任务应设置 shardable=true；若多台服务器有可用GPU，resources 必须覆盖所有可用服务器并写明各自 shard。不可分片时必须填写 shardReason。\n每阶段必须填写 executionPlan。预计超过30分钟时，应主动拆出可独立推进的GPU、CPU、后台作业、子进程或调研分支并尽可能并行利用可用资源；parallelizable=true 时至少安排2个资源分支。确实只能串行时填写 serialReason。初始巡检仅为5分钟、预计总时间50%、75%；100%是结果收获点，不是普通巡检。每次巡检检查资源空闲、慢分支、可新增并行工作和各分支交付物。\n\n【巡检未结束】\n在任何计划巡检点，若任务进程/后台作业仍在运行，或阶段状态不是 completed/overdue，或质量目标/交付物门未通过，即判定“未结束”。应立即根据当前进度、速度和剩余工作量重新估计剩余时间，并重新分析并行资源；此后只安排该剩余时间的50%与100%两个检查点。100%时仍未结束，则再次重估、重新分配资源并重复50%/100%，直到完成、可逾期交付或出现明确阻塞。禁止恢复5分钟/75%巡检或额外轮询。\n\n【自动推进】\n阶段超过 deadlineAt、质量门未通过但必需交付物全部 ready 且有 evidence 时，应立即标记当前阶段 overdue，并使用合法交付物启动下一阶段；不得停下来等待用户审批。只有缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞时才询问用户。\n\n【阶段拆分】\n按任务实际依赖拆分语义阶段，不要机械四等分；phase_id 使用英文短横线。\n\n【留存与删除】\n默认保护所有阶段，completed/overdue 不得清除、回退或改写。用户在当前请求中明确授权后，可用 operation=delete-phase 删除任意状态阶段，或 operation=delete-plan 删除整份计划；必须同时提供 userAuthorizedDeletion=true 和 deletionReason，不得自行推定授权。删除阶段保留 deletionAudit；删除整份计划会永久移除当前会话计划文件。',
+    description: '更新当前会话某个进程目标阶段。\n\n【第一性原理与最小充分】\n如无必要，不增实体。阶段、指标、交付物、证据、资源分支和审计步骤都必须能改变决策、验证最终质量/可用性、安全边界或满足真实下游需求；否则不得添加。禁止反复进行计划合理性审计，已有充分证据时直接推进。SHA、复现说明、manifest、额外报告、消融等均非默认要求，仅在用户明确要求，或完整性、防篡改、跨环境交付、科学复现确为最终目标必要条件时加入。metricResearch 应充分但有停止条件：足以选出可测指标和有依据阈值后停止调研。\n\n【持续尝试：禁止轮数上限】\n不得为 continuation、重试或调研预设 maxRounds、maxRetries、stopAfterAttempts 等轮数上限。阶段未超过 deadlineAt、质量未达标且仍有可执行 adjustment 时，必须持续调研、调整和重试；轮数、尝试次数、进展缓慢或自动续跑预算不得作为停止理由。只允许因质量与交付物合法结束、用户专属输入、权限/安全确认或有证据的不可解外部阻塞而停止。\n\n【契约版本】\ninit-plan 必须提交 introduction、finalObjective 和 phases 对象数组；不需要 phase_id。timeline 只表示单阶段时间文本，禁止把完整数组序列化成字符串。新建成功必须读取保存文件确认 schemaVersion=2、timeline 为对象数组且阶段数量/ID正确。已有计划时初始化会明确失败，不会覆盖、保留拼接或静默降为v1；使用 update-phase 更新旧阶段，或经用户明确授权 migrate-plan/删除后重建。既有无 schemaVersion 的计划按 v1 兼容执行；新建计划必须使用 v2，先定义 finalObjective。每阶段必须先充分调研候选质量指标，记录来源、测量方法、阈值依据、局限性、影响机制、不确定性与验证方案。无法可靠估计贡献幅度时使用 null，禁止编造。只有过程指标不能完成阶段。\n\n【根本目标】\n以完整完成计划为根本。每阶段规划至少一个必需交付物 deliverable；没有可供下一阶段消费的交付物，阶段即使超时也不能结束，且不得启动后续阶段。\n\n【时间规则】\n所有时间统一使用北京时间 UTC+08:00，并以带 +08:00 偏移的 ISO 8601 字符串存储；不接受无时区、Z或其他偏移。首次创建自动记录 createdAt；首次进入 in-progress 自动记录 startedAt。规划或启动每个阶段时必须设置北京时间 deadlineAt。逾期但交付物缺失时保持 in-progress，填写 attempt 并重估新的 deadlineAt 继续执行。\n\n【双门控】\n质量门 metrics 决定是否达标；交付物门 deliverables 决定能否离开阶段。全部质量目标达标、交付物齐备且未超时才允许 completed。超过 deadlineAt 后，只有必需交付物全部 ready 且有 evidence 时才允许 overdue（质量可不达标）；交付物缺失则不能 overdue。\n硬目标未达标或交付物缺失时必须填写 attempt.summary、attempt.findings、attempt.adjustment，总结本轮结果、调研结论和下一轮调整后继续尝试。\n\n【资源发现与并行加速】\n每次阶段从 pending 进入 in-progress，以及进行中阶段重规划 executionPlan 时，都必须重新查询插件 requiredServers 配置中的全部资源服务器，并在 executionPlan.resourceDiscovery 中记录每台服务器状态、可用GPU数、查询时间和证据。查询快照不得超过配置的 resourceDiscoveryMaxAgeMinutes；阶段切换时 queriedAt 必须晚于上一阶段 completedAt，且不得复用本阶段旧快照。插件会保留 resourceDiscoveryHistory。不得锁定第一台GPU后停止查询。推理、评估、数据处理等可分片任务应设置 shardable=true；若多台服务器有可用GPU，resources 必须覆盖所有可用服务器并写明各自 shard。不可分片时必须填写 shardReason。\n每阶段必须填写 executionPlan。预计超过30分钟时，应主动拆出可独立推进的GPU、CPU、后台作业、子进程或调研分支并尽可能并行利用可用资源；parallelizable=true 时至少安排2个资源分支。确实只能串行时填写 serialReason。初始巡检仅为5分钟、预计总时间50%、75%；100%是结果收获点，不是普通巡检。每次巡检检查资源空闲、慢分支、可新增并行工作和各分支交付物。\n\n【巡检未结束】\n在任何计划巡检点，若任务进程/后台作业仍在运行，或阶段状态不是 completed/overdue，或质量目标/交付物门未通过，即判定“未结束”。应立即根据当前进度、速度和剩余工作量重新估计剩余时间，并重新分析并行资源；此后只安排该剩余时间的50%与100%两个检查点。100%时仍未结束，则再次重估、重新分配资源并重复50%/100%，直到完成、可逾期交付或出现明确阻塞。禁止恢复5分钟/75%巡检或额外轮询。\n\n【自动推进】\n阶段超过 deadlineAt、质量门未通过但必需交付物全部 ready 且有 evidence 时，应立即标记当前阶段 overdue，并使用合法交付物启动下一阶段；不得停下来等待用户审批。只有缺少用户专属输入、权限、安全确认或遇到无法自主解决的外部阻塞时才询问用户。\n\n【阶段拆分】\n按任务实际依赖拆分语义阶段，不要机械四等分；phase_id 使用英文短横线。\n\n【留存与删除】\n默认保护所有阶段，completed/overdue 不得清除、回退或改写。用户在当前请求中明确授权后，可用 operation=delete-phase 删除任意状态阶段，或 operation=delete-plan 删除整份计划；必须同时提供 userAuthorizedDeletion=true 和 deletionReason，不得自行推定授权。删除阶段保留 deletionAudit；删除整份计划会永久移除当前会话计划文件。',
     parameters: {
       type: 'object',
       properties: {
@@ -661,6 +711,11 @@ export function apply(ctx, config = {}) {
         deletionReason: { type: 'string', description: '删除原因；删除操作必填' },
         introduction: { type: 'string', description: '完整计划说明' },
         finalObjective: { type: 'object', description: 'v2新计划必填：description、结构化metrics和最终deliverables' },
+        phases: {
+          type: 'array',
+          description: 'operation=init-plan/migrate-plan 时提交的完整阶段数组；每项的 timeline 仅为该阶段的人类可读时间说明',
+          items: { type: 'object' },
+        },
         phase_id: { type: 'string', description: '语义化阶段ID，如 data-prep、train-baseline、full-eval' },
         userAuthorizedAudit: { type: 'boolean', description: '仅当用户明确授权补录终态审计字段时设为 true' },
         auditSupplement: {
@@ -785,7 +840,7 @@ export function apply(ctx, config = {}) {
           required: ['summary', 'findings', 'adjustment'],
         },
       },
-      required: ['phase_id'],
+      required: [],
     },
     output: {
       schema: {
@@ -817,7 +872,15 @@ export function apply(ctx, config = {}) {
       if (!sessionId) return { success: false, warning: '无法识别当前会话，请显式传入 sessionId', mustContinue: false, nextPhaseAllowed: false, nextPhaseId: '', nextAction: '', requiresUserInput: true }
       try {
         const at = nowIso()
+        const operation = planOperation(args)
+        if (operation === 'init-plan' || operation === 'migrate-plan') {
+          const saved = await saveFullPlan(sessionId, args, settings, at, operation)
+          return { success: true, warning: '', mustContinue: false, nextPhaseAllowed: false, nextPhaseId: '',
+            nextAction: '已保存 v2 ' + (operation === 'init-plan' ? '新计划' : '迁移计划') + '，共 ' + saved.timeline.length + ' 个阶段；初始化不启动作业。', requiresUserInput: false }
+        }
+        if (args.phases !== undefined || Array.isArray(args.timeline)) throw new Error('阶段数组只能用于 init-plan/migrate-plan，不能作为阶段文本保存')
         let plan = await loadPlan(sessionId, settings)
+        if (!plan && operation === 'update-phase') throw new Error('当前会话尚无计划，请先用 init-plan 和 phases 创建v2计划')
         if (!plan) plan = clone(EMPTY_PLAN)
         if (!plan.createdAt) plan.createdAt = at
         if (args.operation === 'delete-plan') {
@@ -837,6 +900,7 @@ export function apply(ctx, config = {}) {
           await savePlan(sessionId, plan, settings)
           return { success: true, warning: '', mustContinue: false, nextPhaseAllowed: false, nextPhaseId: '', nextAction: '阶段 ' + phaseId + ' 已按用户授权删除。', requiresUserInput: false }
         }
+        if (args.introduction !== undefined) plan.introduction = requiredText(args.introduction, 'introduction')
         const item = index >= 0 ? plan.timeline[index] : makePhase(phaseId, at)
         const requestedStatus = args.status === undefined ? item.status : String(args.status)
         if (requestedStatus === 'in-progress' && index > 0) {
@@ -884,5 +948,13 @@ export function apply(ctx, config = {}) {
         return { success: false, warning: String(error.message || error), mustContinue: false, nextPhaseAllowed: false, nextPhaseId: '', nextAction: '', requiresUserInput: false }
       }
     },
-  })
+  }
+  const phaseProperties = { ...toolDefinition.parameters.properties }
+  for (const key of ['sessionId', 'operation', '_initPlan', 'userAuthorizedMigration', 'migrationReason', 'userAuthorizedDeletion', 'deletionReason', 'introduction', 'finalObjective', 'phases', 'phase_id', 'userAuthorizedAudit', 'auditSupplement']) delete phaseProperties[key]
+  toolDefinition.parameters.properties.phases.items = {
+    type: 'object',
+    properties: { id: { type: 'string', description: '英文短横线阶段ID' }, ...phaseProperties },
+    required: ['id'],
+  }
+  ctx.tools.register(toolDefinition)
 }

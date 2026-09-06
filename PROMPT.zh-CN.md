@@ -3,7 +3,7 @@
 先将 `[XXX任务]`、`[服务器清单]` 和 `[资源快照有效分钟数]` 替换为当前部署的真实值；服务器可以是任意数量，也可以在 CPU-only 环境中留空：
 
 ```text
-请执行 [XXX任务]。开始前先完整阅读本仓库的 GUIDE.zh-CN.md，并使用 update-progress-target 为当前会话建立独立计划。遵循第一性原理和最小充分原则：如无必要，不增阶段、指标、交付物、证据、资源分支或审计；已有充分证据时直接推进，不反复论证计划合理性。SHA、复现说明、manifest、额外报告和消融均非默认要求，仅在用户明确要求或确为最终目标必要条件时加入。所有时间统一使用北京时间 UTC+08:00，并采用带 `+08:00` 的 ISO 8601 格式。按真实依赖拆分语义阶段，不要机械四等分；每阶段必须设置 deadlineAt、结构化质量硬目标、可供下一阶段消费的必需交付物及验收证据、executionPlan 和资源分支。
+请执行 [XXX任务]。开始前先完整阅读本仓库的 GUIDE.zh-CN.md 和 V2-CONTRACT.zh-CN.md，并使用 update-progress-target 为当前会话建立独立计划。初始化调用使用 `operation="init-plan"`：阶段对象放入新增的 `phases` 数组，每个 `phases[].timeline` 是该单阶段的人类可读时间字符串；初始化不要传顶层 `timeline`，因为实现不会保存该文本，也不要传 `phase_id`，所有阶段只创建为 `pending`。后续 `operation="update-phase"` 的顶层 `timeline` 只表示正在更新的单阶段时间字符串。遵循第一性原理和最小充分原则：如无必要，不增阶段、指标、交付物、证据、资源分支或审计；已有充分证据时直接推进，不反复论证计划合理性。SHA、复现说明、manifest、额外报告和消融均非默认要求，仅在用户明确要求或确为最终目标必要条件时加入。所有时间统一使用北京时间 UTC+08:00，并采用带 `+08:00` 的 ISO 8601 格式。按真实依赖拆分语义阶段，不要机械四等分；每阶段必须设置 deadlineAt、metricResearch、objectiveContribution、带完整元数据的结构化质量硬目标、可供下一阶段消费的必需交付物及验收证据、executionPlan 和资源分支。
 
 建立计划、启动第一个阶段、每次从 pending 转为 in-progress、阶段之间发生转换，以及进行中阶段重新估时或重规划 executionPlan 时，都必须重新查询当前部署配置的全部资源服务器：[服务器清单]，并记录 queriedAt、各服务器状态、可用 GPU 数及查询证据。如果清单为空，则按当前阶段实际需要发现 CPU、GPU、调度队列或云资源，不得虚构服务器。资源快照不得超过[资源快照有效分钟数]分钟；启动后续阶段时，queriedAt 必须晚于上一阶段 completedAt；同一阶段重规划时必须晚于该阶段上一份资源快照。不得复用旧快照，也不得找到第一台可用 GPU 后停止查询。
 
@@ -15,7 +15,9 @@
 
 只有全部结构化质量目标达标、必需交付物全部 ready 且具有验收证据，并且阶段未超过 deadlineAt 时，才能标记 completed。质量目标未达标或交付物缺失时，必须记录 attempt.summary、attempt.findings 和 attempt.adjustment 后继续执行。不得为 continuation 或重试设置 maxRounds、maxRetries、stopAfterAttempts 等轮数上限；未超时且仍有可执行调整方案时必须持续尝试，轮数、进展缓慢或自动续跑预算不能作为停止理由。
 
-默认保护计划历史，尤其是 completed 和 overdue 终态；未经用户明确授权不得删除、回退或改写。用户明确授权后，可以修改或删除任意状态的阶段，但必须保留授权理由和变更审计，不得自行推定授权。
+初始化是仅创建操作。当前会话只要已有任何计划文件，包括历史空 timeline 记录，就不得再次初始化；应让 init-plan 明确失败并保留原文件，不得拼接旧终态或静默按 v1 处理。已有计划统一用 `operation="update-phase"` 更新。旧计划迁移必须取得用户明确授权，并同时提供 `userAuthorizedMigration=true`、非空 reason、完整 finalObjective，以及与原计划阶段数量、顺序和 ID 完全一致的 phases；迁移只补 metricResearch、objectiveContribution 和 metrics 元数据，必须保留原指标数值及其他全部字段、状态和时间。若需删除旧计划，必须由用户明确授权 delete-plan，并提供 `userAuthorizedDeletion=true` 与理由。
 
-除非缺少用户专属输入、权限、安全确认，或遇到无法自主解决的外部阻塞，否则不要停下来询问用户。计划建立后立即开始第一个可执行阶段，并在每次执行进展、检查点、资源刷新、重规划、交付物状态变化和阶段转换时持续调用 update-progress-target 更新进程目标，直到整个任务完成。
+默认保护计划历史，尤其是 completed 和 overdue 终态；未经用户明确授权不得删除、回退或改写。每次初始化或迁移调用后，必须重新读取存储计划，复查 schemaVersion、阶段数量和顺序 ID，迁移时还要复核原指标数值；不能仅凭 Tool 成功卡片宣称完成。
+
+除非缺少用户专属输入、权限、安全确认，或遇到无法自主解决的外部阻塞，否则不要停下来询问用户。计划建立并复查通过后立即使用 update-phase 启动第一个可执行阶段，并在每次执行进展、检查点、资源刷新、重规划、交付物状态变化和阶段转换时持续调用 update-progress-target 更新进程目标，直到整个任务完成。
 ```

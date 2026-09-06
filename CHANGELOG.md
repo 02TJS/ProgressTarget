@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.1 — 2026-09-06
+
+- Add model-visible `phases` object arrays and remove unconditional `phase_id` requirement.
+- Share full-plan initialization and migration between Tool and HTTP; create v2 pending plans without silently performing phase updates.
+- Refuse initialization over any existing or corrupt plan; legacy migration requires explicit authorization and preserves lifecycle history.
+- Reject serialized phase arrays, duplicate IDs, unknown operations, and implicit v1 creation through phase updates.
+- Add isolated Tool/API persistence regression tests (`npm test`).
+
 ## 2.0.0 — 2026-08-26
 
 - Preserve plans without `schemaVersion` as fully compatible v1 plans.

@@ -1,6 +1,7 @@
 {
   "name": "dsh-progress-target",
-  "version": "2.0.0",
+  "version": "2.0.1",
+  "scripts": { "test": "node --test test/*.test.js" },
   "description": "Persistent, quality-gated, resource-aware execution plans for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
