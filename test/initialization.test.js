@@ -4,7 +4,8 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { EventEmitter } from 'node:events'
-import { apply } from '../index.js'
+// Optional file URL verifies the exact installed module without restarting the Host.
+const { apply } = await import(process.env.PROGRESS_TARGET_TEST_MODULE || '../index.js')
 
 const research = { questions: ['Does the stored plan match the contract?'], sources: [{ title: 'User requirement', location: 'init-plan regression', finding: 'Two structured pending phases must persist as v2' }], candidateMetrics: [{ key: 'contract-pass-rate', rationale: 'Directly measures the requested interface', measurement: 'Passed contract assertions / all assertions', limitations: 'Does not measure experiment quality' }], selectedMetrics: ['contract-pass-rate'], selectionReason: 'Direct acceptance test' }
 const metric = { key: 'contract-pass-rate', value: 0, operator: '==', targetValue: 1, kind: 'quality', measurement: 'Passed contract assertions / all assertions', limitations: 'Only covers this contract', thresholdBasis: { type: 'requirement', evidence: 'User requested correct initialization', reason: 'Every assertion must pass' } }
@@ -67,6 +68,10 @@ test('Tool and API share safe full-plan initialization', async () => {
     const bytes = await readFile(file('legacy'), 'utf8')
     assert.equal((await tool.execute({ ...fixture(), sessionId: 'legacy' })).success, false)
     assert.equal(await readFile(file('legacy'), 'utf8'), bytes)
+    await writeFile(file('empty-history'), JSON.stringify({ timeline: [], deletionAudit: [{ reason: 'Historical deletion' }] }))
+    const emptyBefore = await readFile(file('empty-history'), 'utf8')
+    assert.equal((await tool.execute({ ...fixture(), sessionId: 'empty-history' })).success, false)
+    assert.equal(await readFile(file('empty-history'), 'utf8'), emptyBefore)
     const migrate = { ...fixture(), operation: 'migrate-plan', sessionId: 'legacy', migrationReason: 'Test explicit migration', phases: legacy.timeline.map(p => ({ id: p.id, metrics: fixture().phases[0].metrics, metricResearch: research, objectiveContribution: fixture().phases[0].objectiveContribution })) }
     assert.equal((await tool.execute(migrate)).success, false)
     const migrated = await tool.execute({ ...migrate, userAuthorizedMigration: true }); assert.equal(migrated.success, true, migrated.warning)
