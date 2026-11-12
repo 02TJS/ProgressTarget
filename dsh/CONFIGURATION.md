@@ -1,4 +1,4 @@
-﻿# Configuration audit and deployment checklist
+# Configuration audit and deployment checklist
 
 ProgressTarget intentionally does not assume that another deployment has the author's servers, paths, deadlines, metrics, or execution tools. Configure and review the following before use.
 
@@ -23,7 +23,7 @@ Edit `cordis.patch.yml` before adding the bundle:
 |---|---:|---|
 | `requiredServers` | `[]` | Complete fixed server inventory that each resource snapshot must cover. Empty means no fixed inventory is enforced. |
 | `resourceDiscoveryMaxAgeMinutes` | `10` | Maximum snapshot age at phase start or replan. |
-| `dataDir` | `.progress-target` | Storage directory relative to `DSH_CWD` or the Host working directory. |
+| `dataDir` | `.progress-target` | Resolved once at activation under `DSH_HOME`, falling back to `DSH_CWD` and then the Host working directory. Absolute paths override the base. |
 
 Server names are arbitrary strings. The sample names in the guide are examples only.
 

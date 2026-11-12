@@ -44,15 +44,17 @@ ProgressTarget 将普通计划升级为可执行契约：
   └─ 交付物缺失 → 保持 in-progress → 诊断 → 重规划 → 重试
 ```
 
-[返回仓库主页](../README.zh-CN.md)。Codex 版请参阅独立的[安装指南](../codex/README.zh-CN.md)。
+[返回仓库主页](https://github.com/02TJS/ProgressTarget/blob/main/README.zh-CN.md)。Codex 版请参阅独立的[安装指南](https://github.com/02TJS/ProgressTarget/blob/main/codex/README.zh-CN.md)。
 
 ## 安装
 
-本仓库的 `dsh/` 目录是一个 DSH Profile Bundle。请将它加入承载 Web GUI 的实际 Profile；Profile 名称由部署决定：
+需要 Node.js 22+，DSH `>=0.2.1-rc.2 <0.3.0-0`；该区间排除全部 0.3.0 版本（包括预发布版）。请将 npm 组合包加入承载 Web GUI 的实际 Profile（如名称不是 `web`，请替换）：
 
 ```powershell
-dsh plugin --profile <你的-profile> add <ProgressTarget-本地路径>/dsh
+dsh plugin --profile web add dsh-progress-target
 ```
+
+当前本机部署使用 DSH `0.2.1-rc.2`；区间内其他版本尚未逐一验证。`npm test` 覆盖隔离的工具/API、存储、注册生命周期及模拟 React 渲染，不等同于干净 Profile 或真实浏览器的端到端测试。
 
 安装后重启原有 DSH Web Host。不要另起一个替代 Vite 服务，因为 Web 启动状态由正在运行的 DSH Host 注入。
 
@@ -87,7 +89,7 @@ config:
 |---|---:|---|
 | `requiredServers` | `[]` | 每份资源快照必须覆盖的固定服务器或资源池清单 |
 | `resourceDiscoveryMaxAgeMinutes` | `10` | 阶段启动或重规划时允许的最大快照年龄 |
-| `dataDir` | `.progress-target` | 相对于 `DSH_CWD` 或 Host 工作目录的存储目录 |
+| `dataDir` | `.progress-target` | 启用时按 `DSH_HOME` → `DSH_CWD` → Host 工作目录选择基目录；绝对路径优先 |
 
 `requiredServers: []` 表示不强制固定服务器清单，适用于 CPU-only、云端自动扩缩容、调度器资源池或动态发现环境。如果配置了清单，每份快照必须覆盖所有名称；同时仍允许记录额外发现的资源。
 
@@ -109,10 +111,10 @@ config:
 计划按会话保存到：
 
 ```text
-<DSH_CWD>/<dataDir>/<sessionId>.json
+<storage-base>/<dataDir>/<sessionId>.json
 ```
 
-默认 `dataDir` 为 `.progress-target`。不要提交运行态计划文件；仓库的 `.gitignore` 已排除默认目录。
+插件启用时，存储基目录按 `DSH_HOME` → `DSH_CWD` → Host 工作目录的顺序选择。默认 `dataDir` 为 `.progress-target`；绝对路径不使用基目录，之后环境变化不会移动当前目录。从旧版升级时，如旧数据位于 `DSH_CWD`，请在备份后仅复制目标不存在的计划文件，不覆盖已有文件，也不要让多个运行中的 Host 共用一个可写目录。不要提交运行态计划文件；仓库的 `.gitignore` 已排除默认目录。
 
 ## 安全与隐私
 

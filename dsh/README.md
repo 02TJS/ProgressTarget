@@ -44,15 +44,17 @@ quality gate + deliverable gate + deadline gate
   └─ artifact missing → remain in-progress → diagnose → replan → retry
 ```
 
-[Back to repository overview](../README.md). The Codex plugin has its own [installation guide](../codex/README.md).
+[Repository overview](https://github.com/02TJS/ProgressTarget#readme). The Codex plugin has its own [installation guide](https://github.com/02TJS/ProgressTarget/tree/main/codex#readme).
 
 ## Installation
 
-The `dsh/` directory is a DSH Profile Bundle. Add it to the Profile that owns your Web GUI (the Profile name is deployment-specific):
+Requires Node.js 22+ and DSH `>=0.2.1-rc.2 <0.3.0-0`. The range excludes all 0.3.0 builds, including prereleases. Add the npm bundle to the Profile that owns your Web GUI (replace `web` if your Profile uses another name):
 
 ```powershell
-dsh plugin --profile <your-profile> add <path-to-ProgressTarget>/dsh
+dsh plugin --profile web add dsh-progress-target
 ```
+
+The local deployment uses DSH `0.2.1-rc.2`; other matching builds have not been individually verified. `npm test` covers isolated tool/API, storage, registration lifecycle and stubbed React rendering; it is not a clean-profile or real-browser end-to-end test.
 
 Restart the existing DSH Web Host after installation. Do not start a replacement Vite server: the running DSH Host injects the Web boot state.
 
@@ -103,8 +105,10 @@ Required deliverables block downstream phases even after timeout. All history is
 Plans are stored per session under:
 
 ```text
-<DSH_CWD>/.progress-target/<sessionId>.json
+<storage-base>/<dataDir>/<sessionId>.json
 ```
+
+The storage base is selected at activation: `DSH_HOME`, then `DSH_CWD`, then the Host working directory. `dataDir` defaults to `.progress-target`; absolute paths override the base. Later environment changes do not move the active directory. When upgrading from a version that used `DSH_CWD`, copy existing plans to the new directory only when the destination file does not exist; keep backups and never share a writable directory between running Hosts.
 
 Do not commit runtime plan files: `.gitignore` excludes `.progress-target/`.
 

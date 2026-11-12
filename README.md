@@ -8,7 +8,7 @@ This repository contains two independently installable plugins:
 
 | Platform | Version | Progress view | Installation and usage |
 |---|---|---|---|
-| DeepSeek Harness (DSH) | 2.0.1 | Progress tab in DSH Web | [DSH plugin](dsh/README.md) |
+| DeepSeek Harness (DSH) | 2.1.0 | Progress tab in DSH Web | [DSH plugin](dsh/README.md) |
 | Codex | 0.1.0 | Local browser dashboard scoped to the current task | [Codex plugin](codex/README.md) |
 
 Both versions support researched quality metrics, required deliverables, dependency-aware phases, deadlines in Beijing time (`+08:00`), resource snapshots, retries, and protected history. Keep plans minimal: additional reports, hashes, reproduction packages, and ablations are required only when the task actually needs them.
@@ -28,13 +28,13 @@ The two implementations share a project and design principles, but have separate
 
 ## Install DSH
 
-Clone this repository, then add the **`dsh` subdirectory** to the profile that owns your DSH Web interface:
+Requires Node.js 22+ and DSH `>=0.2.1-rc.2 <0.3.0-0`. Install the npm bundle into the Profile that owns your DSH Web interface (replace `web` if needed):
 
 ```sh
-git clone https://github.com/02TJS/ProgressTarget.git
-cd ProgressTarget
-dsh plugin --profile <your-profile> add ./dsh
+dsh plugin --profile web add dsh-progress-target
 ```
+
+For source development, clone the repository and install **only the `dsh` subdirectory** by local path. The Codex subdirectory is a separate product and is not installed by the npm command above.
 
 Restart your existing DSH Web Host. The repository root is no longer a DSH Profile Bundle. See the [DSH guide](dsh/GUIDE.zh-CN.md) and [configuration](dsh/CONFIGURATION.md).
 

@@ -1,11 +1,24 @@
 {
   "name": "dsh-progress-target",
-  "version": "2.0.1",
+  "version": "2.1.0",
+  "author": "02TJS",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/02TJS/ProgressTarget.git",
+    "directory": "dsh"
+  },
+  "homepage": "https://github.com/02TJS/ProgressTarget/tree/main/dsh#readme",
+  "bugs": { "url": "https://github.com/02TJS/ProgressTarget/issues" },
+  "engines": { "node": ">=22", "dsh": ">=0.2.1-rc.2 <0.3.0-0" },
+  "peerDependencies": { "@deepseek-ai/dsh": ">=0.2.1-rc.2 <0.3.0-0" },
+  "peerDependenciesMeta": { "@deepseek-ai/dsh": { "optional": true } },
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
   "scripts": { "test": "node --test test/*.test.js" },
   "description": "Persistent, quality-gated, resource-aware execution plans for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",
     "dsh",
+    "dsh-plugin",
     "ai-agent",
     "experiment-tracking",
     "gpu-scheduling",

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 // Optional file URL verifies the exact installed module without restarting the Host.
 const { apply } = await import(process.env.PROGRESS_TARGET_TEST_MODULE || '../index.js')
@@ -18,7 +18,7 @@ test('Tool and API share safe full-plan initialization', async () => {
   const temp = await mkdtemp(join(tmpdir(), 'progress-target-test-'))
   const dataDir = join(temp, 'plans')
   let tool, route
-  apply({ effect: fn => fn(), webServer: { register: x => { route = x; return () => {} } }, tools: { register: x => { tool = x } }, agents: { currentInitiator: () => ({ id: 'tool-test' }) } }, { dataDir: relative(process.env.DSH_CWD || process.cwd(), dataDir) })
+  apply({ effect: fn => fn(), webServer: { register: x => { route = x; return () => {} } }, tools: { register: x => { tool = x } }, agents: { currentInitiator: () => ({ id: 'tool-test' }) } }, { dataDir })
   const file = id => join(dataDir, id + '.json')
   async function http(id, body) {
     const req = new EventEmitter(); req.url = '/api/progress-target?sessionId=' + id; req.method = body ? 'POST' : 'GET'

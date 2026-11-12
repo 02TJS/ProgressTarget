@@ -8,7 +8,7 @@
 
 | 平台 | 版本 | 进度界面 | 安装与使用 |
 |---|---|---|---|
-| DeepSeek Harness（DSH） | 2.0.1 | DSH Web 内的进度标签页 | [DSH 插件](dsh/README.zh-CN.md) |
+| DeepSeek Harness（DSH） | 2.1.0 | DSH Web 内的进度标签页 | [DSH 插件](dsh/README.zh-CN.md) |
 | Codex | 0.1.0 | 当前任务专属的本地网页看板 | [Codex 插件](codex/README.zh-CN.md) |
 
 两端都保留经过调研的质量指标、必要交付物、真实依赖阶段、北京时间 `+08:00` 截止时间、资源快照、重试与历史保护。遵循第一性原理和最小充分原则：额外报告、SHA、复现材料和消融只在任务确有需要时要求。
@@ -28,13 +28,13 @@ ProgressTarget/
 
 ## 安装 DSH 版
 
-克隆仓库，把 **`dsh` 子目录** 加入承载 DSH Web 界面的实际 Profile：
+需要 Node.js 22+ 和 DSH `>=0.2.1-rc.2 <0.3.0-0`。将 npm 组合包加入承载 DSH Web 界面的实际 Profile（如名称不是 `web`，请替换）：
 
 ```sh
-git clone https://github.com/02TJS/ProgressTarget.git
-cd ProgressTarget
-dsh plugin --profile <你的-profile> add ./dsh
+dsh plugin --profile web add dsh-progress-target
 ```
+
+源码开发时，克隆仓库并按本地路径安装 **`dsh` 子目录**。Codex 子目录是独立产品，上述 npm 命令不会安装 Codex 版。
 
 然后重启原有 DSH Web Host。仓库根目录不再是 DSH Profile Bundle。详细说明见 [DSH 指南](dsh/GUIDE.zh-CN.md)和[配置说明](dsh/CONFIGURATION.md)。
 

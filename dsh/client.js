@@ -141,7 +141,9 @@ window.__ModuleLoader__.load({
                 React.createElement('strong', null, '执行计划：'),
                 '预计' + item.executionPlan.estimatedMinutes + '分钟 · ' + (item.executionPlan.parallelizable ? '并行' : '串行') +
                 ' · ' + (item.executionPlan.shardable ? '可跨服务器分片' : '不可分片') +
-                ' · 巡检5min/' + item.executionPlan.checkpoints[1].minutes + 'min/' + item.executionPlan.checkpoints[2].minutes + 'min · 收获点' + item.executionPlan.harvestAtMinutes + 'min',
+                ' · 检查点：' + (Array.isArray(item.executionPlan.checkpoints) && item.executionPlan.checkpoints.length
+                  ? item.executionPlan.checkpoints.filter(function(point) { return point && Number.isFinite(point.minutes) }).map(function(point) { return (point.kind ? point.kind + ' · ' : '') + point.minutes + 'min' }).join(' / ')
+                  : '未记录') + ' · 收获点' + (item.executionPlan.harvestAtMinutes == null ? '未记录' : item.executionPlan.harvestAtMinutes + 'min'),
                 item.executionPlan.resourceDiscovery
                   ? React.createElement('div', { className: 'pt-resources' },
                       React.createElement('div', { className: 'pt-note' }, '资源快照：' + displayTime(item.executionPlan.resourceDiscovery.queriedAt) + ' · 刷新代数 ' + ((item.resourceDiscoveryHistory && item.resourceDiscoveryHistory.length) || 1)),

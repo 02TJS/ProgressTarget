@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.0 — 2026-11-12
+
+- Prepare the DSH subpackage for npm distribution as `dsh-progress-target`, retaining the existing 02TJS/ProgressTarget repository and separate Codex plugin.
+- Declare DSH `>=0.2.1-rc.2 <0.3.0-0` and Node.js 22+ requirements. This is the supported installation range, not a claim that every matching DSH build has been tested.
+- Resolve relative storage once at activation under `DSH_HOME`, falling back to `DSH_CWD` and then the Host working directory; keep explicit absolute paths supported.
+- Dispose the tool registration on unload, avoiding duplicate registrations after reactivation.
+- Render initial, reduced and absent monitoring checkpoints without assuming a three-item array.
+- Clarify semantic stage boundaries: minimal sufficiency does not mean minimizing stage count.
+- Add isolated storage, HTTP, tool lifecycle and panel regression tests; preserve the existing initialization and migration checks.
+
 ## 2.0.1 — 2026-09-06
 
 - Add model-visible `phases` object arrays and remove unconditional `phase_id` requirement.
